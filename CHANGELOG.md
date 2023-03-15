@@ -1,3 +1,39 @@
+## 1.4.0+1
+- Add error handling on backgrounndcolor in iOS
+
+## 1.4.0
+- Add support for Swift Package Manager
+
+## 1.3.4
+- Add support for background color [278](https://github.com/endigo/flutter_pdfview/pull/278) @bobbybun
+
+## 1.3.3
+- hotfix: Crash on iOS 18
+
+## 1.3.2
+- build.gradle namespace [#253](https://github.com/endigo/flutter_pdfview/pull/253) @DrBu7cher
+- 
+## 1.3.1
+- Upgrade compileSdkVersion to 33
+- Upgrade sdk
+
+## 1.3.0
+
+- Upgrade android-pdf-viewer to beta.3
+
+## 1.2.9
+
+- Deprecate `fitEachPage`
+
+## 1.2.8
+
+- Add documentation on properties
+
+## 1.2.7
+
+- Downgrade android-pdf-viewer from beta.3 to beta.2
+- Upgrade Gradle to 7.3.0
+
 ## 1.2.6
 
 - Fixed defaultPage not working on iOS [#227](https://github.com/endigo/flutter_pdfview/pull/227) @wmatusiak

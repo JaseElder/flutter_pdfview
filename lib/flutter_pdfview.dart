@@ -38,18 +38,29 @@ class PDFView extends StatefulWidget {
     this.defaultPage = 0,
     this.fitPolicy = FitPolicy.WIDTH,
     this.preventLinkNavigation = false,
+    this.backgroundColor,
   })  : assert(filePath != null || pdfData != null),
         super(key: key);
 
   @override
   _PDFViewState createState() => _PDFViewState();
 
-  /// If not null invoked once the web view is created.
+  /// If not null invoked once the PDFView is created.
   final PDFViewCreatedCallback? onViewCreated;
+
+  /// Return PDF page count as a parameter
   final RenderCallback? onRender;
+
+  /// Return current page and page count as a parameter
   final PageChangedCallback? onPageChanged;
+
+  /// Invokes on error that handled on native code
   final ErrorCallback? onError;
+
+  /// Invokes on page cannot be rendered or something happens
   final PageErrorCallback? onPageError;
+
+  /// Used with preventLinkNavigation=true. It's helpful to customize link navigation
   final LinkHandlerCallback? onLinkHandler;
 
   /// Which gestures should be consumed by the pdf view.
@@ -65,19 +76,49 @@ class PDFView extends StatefulWidget {
 
   /// The initial URL to load.
   final String? filePath;
+
+  /// The binary data of a PDF document
   final Uint8List? pdfData;
 
+  /// Indicates whether or not the user can swipe to change pages in the PDF document. If set to true, swiping is enabled.
   final bool enableSwipe;
+
+  /// Indicates whether or not the user can swipe horizontally to change pages in the PDF document. If set to true, horizontal swiping is enabled.
   final bool swipeHorizontal;
+
+  /// Represents the password for a password-protected PDF document. It can be nullable
   final String? password;
+
+  /// Indicates whether or not the PDF viewer is in night mode. If set to true, the viewer is in night mode
   final bool nightMode;
+
+  /// Indicates whether or not the PDF viewer automatically adds spacing between pages. If set to true, spacing is added.
   final bool autoSpacing;
+
+  /// Indicates whether or not the user can "fling" pages in the PDF document. If set to true, page flinging is enabled.
   final bool pageFling;
+
+  /// Indicates whether or not the viewer snaps to a page after the user has scrolled to it. If set to true, snapping is enabled.
   final bool pageSnap;
+
+  /// Represents the default page to display when the PDF document is loaded.
   final int defaultPage;
+
+  /// FitPolicy that determines how the PDF pages are fit to the screen. The FitPolicy enum can take on the following values:
+  /// - FitPolicy.WIDTH: The PDF pages are scaled to fit the width of the screen.
+  /// - FitPolicy.HEIGHT: The PDF pages are scaled to fit the height of the screen.
+  /// - FitPolicy.BOTH: The PDF pages are scaled to fit both the width and height of the screen.
   final FitPolicy fitPolicy;
+
+  /// fitEachPage
+  @Deprecated("will be removed next version")
   final bool fitEachPage;
+
+  /// Indicates whether or not clicking on links in the PDF document will open the link in a new page. If set to true, link navigation is prevented.
   final bool preventLinkNavigation;
+
+  /// Use to change the background color. ex : "#FF0000" => red
+  final Color? backgroundColor;
 }
 
 class _PDFViewState extends State<PDFView> {
@@ -177,31 +218,34 @@ class _CreationParams {
 }
 
 class _PDFViewSettings {
-  _PDFViewSettings(
-      {this.enableSwipe,
-      this.swipeHorizontal,
-      this.password,
-      this.nightMode,
-      this.autoSpacing,
-      this.pageFling,
-      this.pageSnap,
-      this.defaultPage,
-      this.fitPolicy,
-      this.fitEachPage,
-      this.preventLinkNavigation});
+  _PDFViewSettings({
+    this.enableSwipe,
+    this.swipeHorizontal,
+    this.password,
+    this.nightMode,
+    this.autoSpacing,
+    this.pageFling,
+    this.pageSnap,
+    this.defaultPage,
+    this.fitPolicy,
+    this.preventLinkNavigation,
+    this.backgroundColor,
+  });
 
   static _PDFViewSettings fromWidget(PDFView widget) {
     return _PDFViewSettings(
-        enableSwipe: widget.enableSwipe,
-        swipeHorizontal: widget.swipeHorizontal,
-        password: widget.password,
-        nightMode: widget.nightMode,
-        autoSpacing: widget.autoSpacing,
-        pageFling: widget.pageFling,
-        pageSnap: widget.pageSnap,
-        defaultPage: widget.defaultPage,
-        fitPolicy: widget.fitPolicy,
-        preventLinkNavigation: widget.preventLinkNavigation);
+      enableSwipe: widget.enableSwipe,
+      swipeHorizontal: widget.swipeHorizontal,
+      password: widget.password,
+      nightMode: widget.nightMode,
+      autoSpacing: widget.autoSpacing,
+      pageFling: widget.pageFling,
+      pageSnap: widget.pageSnap,
+      defaultPage: widget.defaultPage,
+      fitPolicy: widget.fitPolicy,
+      preventLinkNavigation: widget.preventLinkNavigation,
+      backgroundColor: widget.backgroundColor,
+    );
   }
 
   final bool? enableSwipe;
@@ -213,8 +257,9 @@ class _PDFViewSettings {
   final bool? pageSnap;
   final int? defaultPage;
   final FitPolicy? fitPolicy;
-  final bool? fitEachPage;
   final bool? preventLinkNavigation;
+
+  final Color? backgroundColor;
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
@@ -227,8 +272,10 @@ class _PDFViewSettings {
       'pageSnap': pageSnap,
       'defaultPage': defaultPage,
       'fitPolicy': fitPolicy.toString(),
-      'fitEachPage': fitEachPage,
-      'preventLinkNavigation': preventLinkNavigation
+      'preventLinkNavigation': preventLinkNavigation,
+      "hexBackgroundColor": backgroundColor == null
+          ? null
+          : "#${backgroundColor!.value.toRadixString(16)}",
     };
   }
 
@@ -276,7 +323,9 @@ class PDFViewController {
       case 'onPageChanged':
         if (_widget.onPageChanged != null) {
           _widget.onPageChanged!(
-              call.arguments['page'], call.arguments['total']);
+            call.arguments['page'],
+            call.arguments['total'],
+          );
         }
 
         return null;
