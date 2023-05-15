@@ -1,9 +1,37 @@
+## 1.3.1
+
+- Upgrade compileSdkVersion to 33
+- Upgrade sdk
+
+## 1.3.0
+
+- Upgrade android-pdf-viewer to beta.3
+
+## 1.2.9
+
+- Deprecate `fitEachPage`
+
+## 1.2.8
+
+- Add documentation on properties
+
+## 1.2.7
+
+- Downgrade android-pdf-viewer from beta.3 to beta.2
+- Upgrade Gradle to 7.3.0
+
+## 1.2.6
+
+- Fixed defaultPage not working on iOS [#227](https://github.com/endigo/flutter_pdfview/pull/227) @wmatusiak
+
 ## 1.2.5
 
 - Fixed invalid frame of PDFView on IOS [#201](https://github.com/endigo/flutter_pdfview/pull/201) @wmatusiak
+
 ## 1.2.4
 
 - Change dependency for AndroidPdfViewer [#202](https://github.com/endigo/flutter_pdfview/pull/202) @oorfalimak
+
 ## 1.2.3
 
 - Fixed the Initial Zoom bug in IOS [#192](https://github.com/endigo/flutter_pdfview/pull/192) @moazelsawaf
