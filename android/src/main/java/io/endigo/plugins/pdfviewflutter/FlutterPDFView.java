@@ -135,6 +135,9 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
             case "updateSettings":
                 updateSettings(methodCall, result);
                 break;
+            case "setZoomLimits":
+                setZoomLimits(methodCall);
+                break;
             default:
                 result.notImplemented();
                 break;
@@ -192,6 +195,15 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         pdfView.loadPages();
         //pdfView.refreshDrawableState();
         result.success(true);
+    }
+
+    void setZoomLimits(MethodCall call) {
+        Double minZoom = call.argument("minZoom");
+        Double midZoom = call.argument("midZoom");
+        Double maxZoom = call.argument("maxZoom");
+        pdfView.setMinZoom((float) minZoom.doubleValue());
+        pdfView.setMidZoom((float) midZoom.doubleValue());
+        pdfView.setMaxZoom((float) maxZoom.doubleValue());
     }
 
     void getScreenshot(MethodCall call, Result result) {
