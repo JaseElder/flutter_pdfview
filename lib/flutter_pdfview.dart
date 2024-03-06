@@ -377,6 +377,14 @@ class PDFViewController {
     return isSet;
   }
 
+  Future<void> setZoomLimits(double minZoom, double midZoom, double maxZoom) async {
+    await _channel.invokeMethod('setZoomLimits', <String, dynamic>{
+      'minZoom': minZoom,
+      'midZoom': midZoom,
+      'maxZoom': maxZoom,
+    });
+  }
+
   Future<String> getScreenshot(String fileName) async {
     final String imageFileName = await _channel.invokeMethod('getScreenshot', <String, dynamic>{
       'fileName': fileName,
