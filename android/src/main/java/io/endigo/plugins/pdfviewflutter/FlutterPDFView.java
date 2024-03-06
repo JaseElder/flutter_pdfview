@@ -201,9 +201,9 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         Double minZoom = call.argument("minZoom");
         Double midZoom = call.argument("midZoom");
         Double maxZoom = call.argument("maxZoom");
-        pdfView.setMinZoom((float) (minZoom != null ? minZoom : 1));
-        pdfView.setMidZoom((float) (midZoom != null ? midZoom : 1));
-        pdfView.setMaxZoom((float) (maxZoom != null ? maxZoom : 1));
+        pdfView.setMinZoom((float) (minZoom != null ? minZoom : 1.0));
+        pdfView.setMidZoom((float) (midZoom != null ? midZoom : 1.0));
+        pdfView.setMaxZoom((float) (maxZoom != null ? maxZoom : 1.0));
     }
 
     void getScreenshot(MethodCall call, Result result) {
