@@ -301,6 +301,8 @@ class PDFViewController {
 
   PDFView _widget;
 
+  Completer<void>? _setPositionAndScaleCompleter;
+
   Future<bool?> _onMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'onRender':
@@ -361,19 +363,31 @@ class PDFViewController {
   }
 
   Future<Map<String, double>> getVpPositionAndScale() async {
-    return _channel.invokeMethod('getPositionAndScale').then((posAndScale) => <String, double>{
-          'xPos': posAndScale[0] ?? 0,
-          'yPos': posAndScale[1] ?? 0,
-          'scale': posAndScale[2] ?? 1,
-        });
+    if (_setPositionAndScaleCompleter != null && !_setPositionAndScaleCompleter!.isCompleted) {
+      await _setPositionAndScaleCompleter!.future;
+    }
+
+    final posAndScale = await _channel.invokeMethod('getPositionAndScale');
+    return <String, double>{
+      'xPos': posAndScale[0] ?? 0,
+      'yPos': posAndScale[1] ?? 0,
+      'scale': posAndScale[2] ?? 1,
+    };
   }
 
   Future<bool> setVpPositionAndScale(Offset position, double scale) async {
+    if (_setPositionAndScaleCompleter != null && !_setPositionAndScaleCompleter!.isCompleted) {
+      await _setPositionAndScaleCompleter!.future;
+    }
+    _setPositionAndScaleCompleter = Completer<void>();
     final bool isSet = await _channel.invokeMethod('setPositionAndScale', <String, dynamic>{
       'xPos': position.dx,
       'yPos': position.dy,
       'scale': scale,
     });
+    if (!_setPositionAndScaleCompleter!.isCompleted) {
+      _setPositionAndScaleCompleter!.complete();
+    }
     return isSet;
   }
 

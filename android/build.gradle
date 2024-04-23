@@ -1,21 +1,11 @@
 group 'io.endigo.plugings.pdfview'
 version '1.0-SNAPSHOT'
 
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:7.3.1'
-    }
-}
-
 rootProject.allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://jitpack.io' }
     }
 }
 
@@ -36,6 +26,6 @@ android {
 }
 
 dependencies {
-    implementation 'com.github.mhiew:android-pdf-viewer:3.2.0-beta.3'
+    implementation 'com.github.lion1988dev:AndroidPdfViewer:3.2.4'
 }
 
