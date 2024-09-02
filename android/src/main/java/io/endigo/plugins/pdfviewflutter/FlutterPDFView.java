@@ -86,11 +86,7 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                         args.put("pages", pages);
                         methodChannel.invokeMethod("onRender", args);
                     }).onDraw((canvas, pageWidth, pageHeight, displayedPage) -> {
-                        Map<String, Object> args = new HashMap<>();
-                        args.put("zoom", pdfView.getZoom());
-                        args.put("pageWidth", pageWidth);
-                        args.put("pageHeight", pageHeight);
-                        methodChannel.invokeMethod("onDraw", args);
+                        methodChannel.invokeMethod("onDraw", null);
                     }).onLoad(nbPages -> {
                         Map<String, Object> args = new HashMap<>();
                         args.put("pages", nbPages);

@@ -58,12 +58,20 @@
 - (void)onMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
     if ([[call method] isEqualToString:@"pageCount"]) {
         [_pdfView getPageCount:call result:result];
+    } else if ([[call method] isEqualToString:@"currentPageSize"]) {
+        [_pdfView getCurrentPageSize:call result:result];
+    } else if ([[call method] isEqualToString:@"getPositionAndScale"]) {
+        [_pdfView getPositionAndScale:call result:result];
+    } else if ([[call method] isEqualToString:@"setPositionAndScale"]) {
+        [_pdfView setPositionAndScale:call result:result];
     } else if ([[call method] isEqualToString:@"currentPage"]) {
         [_pdfView getCurrentPage:call result:result];
     } else if ([[call method] isEqualToString:@"setPage"]) {
         [_pdfView setPage:call result:result];
     } else if ([[call method] isEqualToString:@"updateSettings"]) {
         [_pdfView onUpdateSettings:call result:result];
+    } else if ([[call method] isEqualToString:@"setZoomLimits"]) {
+        [_pdfView setZoomLimits:call];
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -82,6 +90,7 @@
 @implementation FLTPDFView {
     FLTPDFViewController* _controler;
     PDFView* _pdfView;
+    UIScrollView* _scrollView;
     NSNumber* _pageCount;
     NSNumber* _currentPage;
     PDFDestination* _currentDestination;
@@ -89,6 +98,8 @@
     BOOL _autoSpacing;
     PDFPage* _defaultPage;
     BOOL _defaultPageSet;
+    CGFloat _screenScale;
+    CGRect _pageSpaceRect;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -96,6 +107,7 @@
                     controler:(nonnull FLTPDFViewController *)controler {
     if ([super init]) {
         _controler = controler;
+        _screenScale = [[UIScreen mainScreen] scale];
         
         _pdfView = [[PDFView alloc] initWithFrame: frame];
         _pdfView.delegate = self;
@@ -138,6 +150,7 @@
   
             [_pdfView usePageViewController:pageFling withViewOptions:nil];
             _pdfView.displayMode = enableSwipe ? kPDFDisplaySinglePageContinuous : kPDFDisplaySinglePage;
+            _pdfView.displaysPageBreaks = NO;
             _pdfView.document = document;
 
             _pdfView.maxScaleFactor = 4.0;
@@ -160,14 +173,9 @@
             }
 
             _defaultPage = [document pageAtIndex: defaultPage];
-            __weak __typeof__(self) weakSelf = self;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
-            });
         }
         
         if (@available(iOS 11.0, *)) {
-            UIScrollView *_scrollView;
 
             for (id subview in _pdfView.subviews) {
                 if ([subview isKindOfClass: [UIScrollView class]]) {
@@ -188,6 +196,15 @@
     return self;
 }
 
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf onDraw];
+    });
+}
+
+
 - (void)layoutSubviews {
     [super layoutSubviews];
     _pdfView.frame = self.frame;
@@ -201,6 +218,13 @@
         [_pdfView goToPage: _defaultPage];
         _defaultPageSet = true;
     }
+    _scrollView.delegate = self;
+    
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [self->_pdfView.document pageCount]]];
+    });
 }
 
 - (UIView*)view {
@@ -211,6 +235,38 @@
 - (void)getPageCount:(FlutterMethodCall*)call result:(FlutterResult)result {
     _pageCount = [NSNumber numberWithUnsignedLong: [[_pdfView document] pageCount]];
     result(_pageCount);
+}
+
+- (void)getCurrentPageSize:(FlutterMethodCall*)call result:(FlutterResult)result {
+    CGRect bounds = _pdfView.documentView.bounds;
+    NSArray *size = @[[NSNumber numberWithFloat:bounds.size.width], [NSNumber numberWithFloat:bounds.size.height]];
+    result(size);
+}
+
+- (void)getPositionAndScale:(FlutterMethodCall*)call result:(FlutterResult)result {
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
+    float zoom = _pdfView.scaleFactor;
+    float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRect.size.height - _pdfView.documentView.bounds.size.height) * (_screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit));
+    NSLog(@"get flutterNormalisedY: (%f + %f - %f) * (%f * ((%f == 0.0) ? 1.0 : %f))", _pageSpaceRect.origin.y, _pageSpaceRect.size.height, _pdfView.documentView.bounds.size.height, _screenScale, _pdfView.scaleFactorForSizeToFit, _pdfView.scaleFactorForSizeToFit);
+    NSLog(@"get y: %f", flutterNormalisedY);
+    NSArray *posAndScale = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY], [NSNumber numberWithFloat:zoom]];
+    result(posAndScale);
+}
+
+- (void)setPositionAndScale:(FlutterMethodCall*)call result:(FlutterResult)result {
+    NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
+    NSNumber* xPos = arguments[@"xPos"];
+    NSNumber* yPos = arguments[@"yPos"];
+    NSNumber* scale = arguments[@"scale"];
+    float iOSNormalisedY = yPos.floatValue / (_screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit));
+
+    iOSNormalisedY = iOSNormalisedY - _pageSpaceRect.size.height + _pdfView.documentView.bounds.size.height;
+    NSLog(@"set iOSNormalisedY: (%f / (%f * ((%f == 0.0) ? 1.0 : %f))) - %f + %f", yPos.floatValue, _screenScale, _pdfView.scaleFactorForSizeToFit, _pdfView.scaleFactorForSizeToFit, _pageSpaceRect.size.height, _pdfView.documentView.bounds.size.height);
+    NSLog(@"set y: %f", iOSNormalisedY);
+    [_pdfView goToRect:CGRectMake(xPos.floatValue, iOSNormalisedY, _pageSpaceRect.size.width, _pageSpaceRect.size.height) onPage:_pdfView.currentPage];
+    _pdfView.scaleFactor = scale.doubleValue;
+    
+    result([NSNumber numberWithBool: YES]);
 }
 
 - (void)getCurrentPage:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -230,6 +286,16 @@
     result(nil);
 }
 
+- (void)setZoomLimits:(FlutterMethodCall*)call {
+    NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
+    NSNumber* minZoom = arguments[@"minZoom"];
+    NSNumber* maxZoom = arguments[@"maxZoom"];
+    float minScale = minZoom.floatValue * _pdfView.scaleFactorForSizeToFit;
+    float maxScale = maxZoom.floatValue * _pdfView.scaleFactorForSizeToFit;
+    _pdfView.minScaleFactor = minScale != 0.0 ? minScale : minZoom.floatValue;
+    _pdfView.maxScaleFactor = maxScale != 0.0 ? maxScale : maxZoom.floatValue;
+}
+
 -(void)handlePageChanged:(NSNotification*)notification {
     [_controler invokeChannelMethod:@"onPageChanged" arguments:@{@"page" : [NSNumber numberWithUnsignedLong: [_pdfView.document indexForPage: _pdfView.currentPage]], @"total" : [NSNumber numberWithUnsignedLong: [_pdfView.document pageCount]]}];
 }
@@ -238,10 +304,14 @@
     [_controler invokeChannelMethod:@"onRender" arguments:@{@"pages" : pages}];
 }
 
+- (void)onDraw {
+    [_controler invokeChannelMethod:@"onDraw" arguments:@{}];
+}
+
 - (void)PDFViewWillClickOnLink:(PDFView *)sender
                        withURL:(NSURL *)url{
     if (!_preventLinkNavigation){
-        [[UIApplication sharedApplication] openURL:url];
+        [[UIApplication sharedApplication] openURL:url options:@{}.mutableCopy completionHandler:nil];
     }
     [_controler invokeChannelMethod:@"onLinkHandler" arguments:url.absoluteString];
 }

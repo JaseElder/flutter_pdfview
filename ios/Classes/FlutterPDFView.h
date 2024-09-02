@@ -20,16 +20,20 @@ API_AVAILABLE(ios(11.0))
 @end
 
 API_AVAILABLE(ios(11.0))
-@interface FLTPDFView : UIView <FlutterPlatformView, PDFViewDelegate>
+@interface FLTPDFView : UIView <FlutterPlatformView, PDFViewDelegate, UIScrollViewDelegate>
 - (instancetype)initWithFrame:(CGRect)frame
                     arguments:(id _Nullable)args
                     controler:(FLTPDFViewController*)controler;
 - (void)layoutSubviews;
 - (UIView*)view;
 - (void)getPageCount:(FlutterMethodCall*)call result:(FlutterResult)result;
+- (void)getCurrentPageSize:(FlutterMethodCall*)call result:(FlutterResult)result;
+- (void)getPositionAndScale:(FlutterMethodCall*)call result:(FlutterResult)result;
+- (void)setPositionAndScale:(FlutterMethodCall*)call result:(FlutterResult)result;
 - (void)getCurrentPage:(FlutterMethodCall*)call result:(FlutterResult)result;
 - (void)setPage:(FlutterMethodCall*)call result:(FlutterResult)result;
 - (void)onUpdateSettings:(FlutterMethodCall*)call result:(FlutterResult)result;
+- (void)setZoomLimits:(FlutterMethodCall*)call;
 @end
 
 API_AVAILABLE(ios(11.0))

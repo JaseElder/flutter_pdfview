@@ -13,7 +13,7 @@ typedef ErrorCallback = void Function(dynamic error);
 typedef PageErrorCallback = void Function(int? page, dynamic error);
 typedef LinkHandlerCallback = void Function(String? uri);
 typedef LoadCompleteCallback = void Function(int? pages);
-typedef DrawCallback = void Function(double? zoom, double pageWidth, double pageHeight);
+typedef DrawCallback = void Function();
 
 enum FitPolicy { WIDTH, HEIGHT, BOTH }
 
@@ -343,7 +343,7 @@ class PDFViewController {
         return null;
       case 'onDraw':
         if (_widget.onDraw != null) {
-          _widget.onDraw!(call.arguments['zoom'], call.arguments['pageWidth'], call.arguments['pageHeight']);
+          _widget.onDraw!();
         }
 
         return null;
