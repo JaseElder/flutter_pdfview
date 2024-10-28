@@ -1,31 +1,27 @@
 package io.endigo.plugins.pdfviewflutter;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.net.Uri;
-import android.util.Log;
 import android.view.View;
+import android.net.Uri;
 
-import com.github.barteksc.pdfviewer.PDFView;
-import com.github.barteksc.pdfviewer.PDFView.Configurator;
-import com.github.barteksc.pdfviewer.link.LinkHandler;
-import com.github.barteksc.pdfviewer.util.FitPolicy;
-import com.shockwave.pdfium.util.SizeF;
-
-import java.io.File;
-import java.io.FileOutputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-
-import androidx.annotation.NonNull;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.platform.PlatformView;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
+import com.github.barteksc.pdfviewer.PDFView;
+import com.github.barteksc.pdfviewer.PDFView.Configurator;
+import com.github.barteksc.pdfviewer.listener.*;
+import com.github.barteksc.pdfviewer.util.Constants;
+import com.github.barteksc.pdfviewer.util.FitPolicy;
+
+import com.github.barteksc.pdfviewer.link.LinkHandler;
 
 public class FlutterPDFView implements PlatformView, MethodCallHandler {
     private final PDFView pdfView;
@@ -51,6 +47,13 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         } else if (params.get("pdfData") != null) {
             byte[] data = (byte[]) params.get("pdfData");
             config = pdfView.fromBytes(data);
+        }
+
+        Object backgroundColor = params.get("hexBackgroundColor");
+        if(backgroundColor != null && backgroundColor instanceof String){
+            try {
+                pdfView.setBackgroundColor(Color.parseColor((String) backgroundColor));
+            }catch (IllegalArgumentException e){}
         }
 
         if (config != null) {

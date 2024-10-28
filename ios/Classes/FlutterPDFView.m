@@ -42,9 +42,22 @@
                     arguments:(id _Nullable)args
               binaryMessenger:(NSObject<FlutterBinaryMessenger>*)messenger {
     self = [super init];
-    _pdfView = [[FLTPDFView new] initWithFrame:frame arguments:args controler:self];
+    _pdfView = [[FLTPDFView new] initWithFrame:frame arguments:args controller:self];
     _viewId = viewId;
-    
+
+    @try  {
+        NSString* hexBackgroundColor = args[@"hexBackgroundColor"];
+        unsigned rgbValue = 0;
+        NSScanner *scanner = [NSScanner scannerWithString:hexBackgroundColor];
+        [scanner setScanLocation:1]; // bypass '#' character
+        [scanner scanHexInt:&rgbValue];
+
+        UIColor *colour = [UIColor colorWithRed:((rgbValue & 0xFF0000) >> 16)/255.0
+                                          green:((rgbValue & 0xFF00) >> 8)/255.0 blue:(rgbValue & 0xFF)/255.0 alpha:1.0];
+        _pdfView.view.backgroundColor = colour;
+    } @catch (NSException *exception) {
+    }
+
     NSString* channelName = [NSString stringWithFormat:@"plugins.endigo.io/pdfview_%lld", viewId];
     _channel = [FlutterMethodChannel methodChannelWithName:channelName binaryMessenger:messenger];
     __weak __typeof__(self) weakSelf = self;
@@ -88,9 +101,8 @@
 @end
 
 @implementation FLTPDFView {
-    FLTPDFViewController* _controler;
+    FLTPDFViewController* _controller;
     PDFView* _pdfView;
-    UIScrollView* _scrollView;
     NSNumber* _pageCount;
     NSNumber* _currentPage;
     PDFDestination* _currentDestination;
@@ -104,11 +116,11 @@
 
 - (instancetype)initWithFrame:(CGRect)frame
                     arguments:(id _Nullable)args
-                    controler:(nonnull FLTPDFViewController *)controler {
+                    controller:(nonnull FLTPDFViewController *)controller {
     if ([super init]) {
-        _controler = controler;
+        _controller = controller;
         _screenScale = [[UIScreen mainScreen] scale];
-        
+
         _pdfView = [[PDFView alloc] initWithFrame: frame];
         _pdfView.delegate = self;
                 
@@ -133,7 +145,7 @@
 
 
         if (document == nil) {
-            [_controler invokeChannelMethod:@"onError" arguments:@{@"error" : @"cannot create document: File not in PDF format or corrupted."}];
+            [_controller invokeChannelMethod:@"onError" arguments:@{@"error" : @"cannot create document: File not in PDF format or corrupted."}];
         } else {
             _pdfView.autoresizesSubviews = true;
             _pdfView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -173,9 +185,14 @@
             }
 
             _defaultPage = [document pageAtIndex: defaultPage];
+            __weak __typeof__(self) weakSelf = self;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
+            });
         }
-        
+
         if (@available(iOS 11.0, *)) {
+            UIScrollView *_scrollView;
 
             for (id subview in _pdfView.subviews) {
                 if ([subview isKindOfClass: [UIScrollView class]]) {
@@ -196,7 +213,7 @@
     return self;
 }
 
-
+// TODO is this the root?
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     __weak __typeof__(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -218,13 +235,14 @@
         [_pdfView goToPage: _defaultPage];
         _defaultPageSet = true;
     }
-    _scrollView.delegate = self;
-    
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
-    __weak __typeof__(self) weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [self->_pdfView.document pageCount]]];
-    });
+    // TODO more of the root?
+//    _scrollView.delegate = self;
+//
+//    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
+//    __weak __typeof__(self) weakSelf = self;
+//    dispatch_async(dispatch_get_main_queue(), ^{
+//        [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [self->_pdfView.document pageCount]]];
+//    });
 }
 
 - (UIView*)view {
@@ -247,11 +265,11 @@
     _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
     float zoom = _pdfView.scaleFactor;
     float scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
-    
+
     float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRect.size.height - _pdfView.documentView.bounds.size.height) * scaleRatio;
-    
+
     //NSLog(@"get flutterNormalisedY: (%f + %f - %f) * (%f * ((%f == 0.0) ? 1.0 : %f))", _pageSpaceRect.origin.y, _pageSpaceRect.size.height, _pdfView.documentView.bounds.size.height, _screenScale, _pdfView.scaleFactorForSizeToFit, _pdfView.scaleFactorForSizeToFit);
-    
+
     //NSLog(@"get y: %f", flutterNormalisedY);
     NSArray *posAndScale = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY], [NSNumber numberWithFloat:zoom]];
     result(posAndScale);
@@ -263,15 +281,15 @@
     NSNumber* yPos = arguments[@"yPos"];
     NSNumber* scale = arguments[@"scale"];
     float scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
-    
+
     float iOSNormalisedY = yPos.floatValue / scaleRatio - _pageSpaceRect.size.height + _pdfView.documentView.bounds.size.height;
-    
+
     //NSLog(@"set iOSNormalisedY: (%f / (%f * ((%f == 0.0) ? 1.0 : %f))) - %f + %f", yPos.floatValue, _screenScale, _pdfView.scaleFactorForSizeToFit, _pdfView.scaleFactorForSizeToFit, _pageSpaceRect.size.height, _pdfView.documentView.bounds.size.height);
-    
+
     //NSLog(@"set y: %f", iOSNormalisedY);
     [_pdfView goToRect:CGRectMake(xPos.floatValue, iOSNormalisedY, _pageSpaceRect.size.width, _pageSpaceRect.size.height) onPage:_pdfView.currentPage];
     _pdfView.scaleFactor = scale.doubleValue;
-    
+
     result([NSNumber numberWithBool: YES]);
 }
 
@@ -303,23 +321,31 @@
 }
 
 -(void)handlePageChanged:(NSNotification*)notification {
-    [_controler invokeChannelMethod:@"onPageChanged" arguments:@{@"page" : [NSNumber numberWithUnsignedLong: [_pdfView.document indexForPage: _pdfView.currentPage]], @"total" : [NSNumber numberWithUnsignedLong: [_pdfView.document pageCount]]}];
+    [_controller invokeChannelMethod:@"onPageChanged" arguments:@{@"page" : [NSNumber numberWithUnsignedLong: [_pdfView.document indexForPage: _pdfView.currentPage]], @"total" : [NSNumber numberWithUnsignedLong: [_pdfView.document pageCount]]}];
 }
 
 -(void)handleRenderCompleted: (NSNumber*)pages {
-    [_controler invokeChannelMethod:@"onRender" arguments:@{@"pages" : pages}];
+    [_controller invokeChannelMethod:@"onRender" arguments:@{@"pages" : pages}];
 }
 
-- (void)onDraw {
-    [_controler invokeChannelMethod:@"onDraw" arguments:@{}];
-}
+// TODO more of root?
+//- (void)onDraw {
+//    [_controller invokeChannelMethod:@"onDraw" arguments:@{}];
+//}
 
 - (void)PDFViewWillClickOnLink:(PDFView *)sender
                        withURL:(NSURL *)url{
     if (!_preventLinkNavigation){
-        [[UIApplication sharedApplication] openURL:url options:@{}.mutableCopy completionHandler:nil];
+        NSDictionary *options = @{};
+        [[UIApplication sharedApplication] openURL:url options:options completionHandler:^(BOOL success) {
+            if (success) {
+                NSLog(@"URL opened successfully");
+            } else {
+                NSLog(@"Failed to open URL");
+            }
+        } ];
     }
-    [_controler invokeChannelMethod:@"onLinkHandler" arguments:url.absoluteString];
+    [_controller invokeChannelMethod:@"onLinkHandler" arguments:url.absoluteString];
 }
 
 - (void) onDoubleTap: (UITapGestureRecognizer *)recognizer {
