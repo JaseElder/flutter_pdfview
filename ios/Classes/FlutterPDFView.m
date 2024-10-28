@@ -116,7 +116,7 @@
 
 - (instancetype)initWithFrame:(CGRect)frame
                     arguments:(id _Nullable)args
-                    controller:(nonnull FLTPDFViewController *)controller {
+                    controler:(nonnull FLTPDFViewController *)controler {
     if ([super init]) {
         _controller = controller;
         _screenScale = [[UIScreen mainScreen] scale];
@@ -185,14 +185,14 @@
             }
 
             _defaultPage = [document pageAtIndex: defaultPage];
+            // TODO is part of root?
             __weak __typeof__(self) weakSelf = self;
             dispatch_async(dispatch_get_main_queue(), ^{
                 [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
             });
         }
-
+        
         if (@available(iOS 11.0, *)) {
-            UIScrollView *_scrollView;
 
             for (id subview in _pdfView.subviews) {
                 if ([subview isKindOfClass: [UIScrollView class]]) {
