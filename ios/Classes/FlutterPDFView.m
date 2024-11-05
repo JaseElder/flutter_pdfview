@@ -73,10 +73,14 @@
         [_pdfView getPageCount:call result:result];
     } else if ([[call method] isEqualToString:@"currentPageSize"]) {
         [_pdfView getCurrentPageSize:call result:result];
-    } else if ([[call method] isEqualToString:@"getPositionAndScale"]) {
-        [_pdfView getPositionAndScale:call result:result];
-    } else if ([[call method] isEqualToString:@"setPositionAndScale"]) {
-        [_pdfView setPositionAndScale:call result:result];
+    } else if ([[call method] isEqualToString:@"getPosition"]) {
+        [_pdfView getPosition:call result:result];
+    } else if ([[call method] isEqualToString:@"getScale"]) {
+        [_pdfView getScale:call result:result];
+    } else if ([[call method] isEqualToString:@"setPosition"]) {
+        [_pdfView setPosition:call result:result];
+    } else if ([[call method] isEqualToString:@"setScale"]) {
+        [_pdfView setScale:call result:result];
     } else if ([[call method] isEqualToString:@"currentPage"]) {
         [_pdfView getCurrentPage:call result:result];
     } else if ([[call method] isEqualToString:@"setPage"]) {
@@ -103,6 +107,7 @@
 @implementation FLTPDFView {
     FLTPDFViewController* _controller;
     PDFView* _pdfView;
+    UIScrollView* _scrollView;
     NSNumber* _pageCount;
     NSNumber* _currentPage;
     PDFDestination* _currentDestination;
@@ -112,11 +117,15 @@
     BOOL _defaultPageSet;
     CGFloat _screenScale;
     CGRect _pageSpaceRect;
+    CGFloat _pageSpaceRectWidth;
+    CGFloat _pageSpaceRectHeight;
+    CGFloat _scaleRatio;
+    CGFloat _documentHeight;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
                     arguments:(id _Nullable)args
-                    controler:(nonnull FLTPDFViewController *)controler {
+                   controller:(nonnull FLTPDFViewController *)controller {
     if ([super init]) {
         _controller = controller;
         _screenScale = [[UIScreen mainScreen] scale];
@@ -185,42 +194,62 @@
             }
 
             _defaultPage = [document pageAtIndex: defaultPage];
-            // TODO is part of root?
-            __weak __typeof__(self) weakSelf = self;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
-            });
-        }
-        
-        if (@available(iOS 11.0, *)) {
-
-            for (id subview in _pdfView.subviews) {
-                if ([subview isKindOfClass: [UIScrollView class]]) {
-                    _scrollView = subview;
+            if (@available(iOS 11.0, *)) {
+                for (id subview in _pdfView.subviews) {
+                    if ([subview isKindOfClass: [UIScrollView class]]) {
+                        _scrollView = subview;
+                    }
+                }
+                
+                _scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+                if (@available(iOS 13.0, *)) {
+                    _scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
                 }
             }
             
-            _scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-            if (@available(iOS 13.0, *)) {
-                _scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
-            }
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePageChanged:) name:PDFViewPageChangedNotification object:_pdfView];
+            [self addSubview:_pdfView];
         }
-        
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePageChanged:) name:PDFViewPageChangedNotification object:_pdfView];
-        [self addSubview:_pdfView];
-        
     }
     return self;
 }
 
-// TODO is this the root?
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    __weak __typeof__(self) weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [weakSelf onDraw];
-    });
+- (void)dealloc {
+    [self stopObserving];
 }
 
+- (void)startObserving {
+    if (_scrollView) {
+        [_scrollView addObserver:self
+                      forKeyPath:@"contentOffset"
+                         options:NSKeyValueObservingOptionNew | NSKeyValueObservingOptionOld
+                         context:nil];
+    }
+}
+
+- (void)stopObserving {
+    if (_scrollView) {
+        [_scrollView removeObserver:self forKeyPath:@"contentOffset"];
+    }
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey,id> *)change
+                       context:(void *)context {
+    if ([keyPath isEqualToString:@"contentOffset"]) {
+        CGPoint newOffset = [change[NSKeyValueChangeNewKey] CGPointValue];
+        CGPoint oldOffset = [change[NSKeyValueChangeOldKey] CGPointValue];
+        if (!CGPointEqualToPoint(newOffset, oldOffset)) {
+            __weak __typeof__(self) weakSelf = self;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [weakSelf handleOnDraw];
+            });
+        }
+    } else {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    }
+}
 
 - (void)layoutSubviews {
     [super layoutSubviews];
@@ -235,14 +264,18 @@
         [_pdfView goToPage: _defaultPage];
         _defaultPageSet = true;
     }
-    // TODO more of the root?
-//    _scrollView.delegate = self;
-//
-//    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
-//    __weak __typeof__(self) weakSelf = self;
-//    dispatch_async(dispatch_get_main_queue(), ^{
-//        [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [self->_pdfView.document pageCount]]];
-//    });
+    
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
+    _pageSpaceRectWidth = _pageSpaceRect.size.width;
+    _pageSpaceRectHeight = _pageSpaceRect.size.height;
+    _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
+    _pageCount = [NSNumber numberWithUnsignedLong: _pdfView.document.pageCount];
+    NSNumber* pc = _pageCount;
+    _documentHeight = _pdfView.documentView.bounds.size.height;
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [weakSelf handleRenderCompleted:pc];
+    });
 }
 
 - (UIView*)view {
@@ -251,45 +284,53 @@
 
 
 - (void)getPageCount:(FlutterMethodCall*)call result:(FlutterResult)result {
-    _pageCount = [NSNumber numberWithUnsignedLong: [[_pdfView document] pageCount]];
     result(_pageCount);
 }
 
 - (void)getCurrentPageSize:(FlutterMethodCall*)call result:(FlutterResult)result {
-    CGRect bounds = _pdfView.documentView.bounds;
+    CGRect bounds = [_pdfView.currentPage boundsForBox:kPDFDisplayBoxMediaBox];
     NSArray *size = @[[NSNumber numberWithFloat:bounds.size.width], [NSNumber numberWithFloat:bounds.size.height]];
     result(size);
 }
 
-- (void)getPositionAndScale:(FlutterMethodCall*)call result:(FlutterResult)result {
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
-    float zoom = _pdfView.scaleFactor;
-    float scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
-
-    float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRect.size.height - _pdfView.documentView.bounds.size.height) * scaleRatio;
-
-    //NSLog(@"get flutterNormalisedY: (%f + %f - %f) * (%f * ((%f == 0.0) ? 1.0 : %f))", _pageSpaceRect.origin.y, _pageSpaceRect.size.height, _pdfView.documentView.bounds.size.height, _screenScale, _pdfView.scaleFactorForSizeToFit, _pdfView.scaleFactorForSizeToFit);
-
-    //NSLog(@"get y: %f", flutterNormalisedY);
-    NSArray *posAndScale = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY], [NSNumber numberWithFloat:zoom]];
-    result(posAndScale);
+- (void)getPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
+    PDFPage* currentPage = _pdfView.currentPage;
+    int pageNo = (int)[_pdfView.document indexForPage:currentPage] + 1;
+    float currentPageHeight = [currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.frame toPage:currentPage];
+    float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRectHeight + ((_pageCount.intValue - pageNo) * currentPageHeight) - _documentHeight) * _scaleRatio;
+    
+    NSArray *position = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY]];
+    result(position);
 }
 
-- (void)setPositionAndScale:(FlutterMethodCall*)call result:(FlutterResult)result {
+- (void)getScale:(FlutterMethodCall*)call result:(FlutterResult)result {
+    NSNumber *scale = [NSNumber numberWithFloat:_pdfView.scaleFactor];
+    result(scale);
+}
+
+- (void)setPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
-    NSNumber* xPos = arguments[@"xPos"];
-    NSNumber* yPos = arguments[@"yPos"];
-    NSNumber* scale = arguments[@"scale"];
-    float scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
+    float xPos = arguments[@"xPos"].floatValue;
+    float yPos = arguments[@"yPos"].floatValue;
+    PDFPage* currentPage = _pdfView.currentPage;
+    _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
+    int pageNo = (int)[_pdfView.document indexForPage:currentPage] + 1;
+    float currentPageHeight = [currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
+    CGFloat iOSNormalisedY = (yPos / _scaleRatio) - _pageSpaceRectHeight - ((_pageCount.intValue - pageNo) * currentPageHeight) + _documentHeight;
+    
+    if (iOSNormalisedY > currentPageHeight - _pageSpaceRectHeight && pageNo > 1) {
+        currentPage = [_pdfView.document pageAtIndex:pageNo - 2];
+        iOSNormalisedY -= currentPageHeight;
+    }
+    [_pdfView goToRect:CGRectMake(xPos,  iOSNormalisedY, _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:currentPage];
+    
+    result([NSNumber numberWithBool: YES]);
+}
 
-    float iOSNormalisedY = yPos.floatValue / scaleRatio - _pageSpaceRect.size.height + _pdfView.documentView.bounds.size.height;
-
-    //NSLog(@"set iOSNormalisedY: (%f / (%f * ((%f == 0.0) ? 1.0 : %f))) - %f + %f", yPos.floatValue, _screenScale, _pdfView.scaleFactorForSizeToFit, _pdfView.scaleFactorForSizeToFit, _pageSpaceRect.size.height, _pdfView.documentView.bounds.size.height);
-
-    //NSLog(@"set y: %f", iOSNormalisedY);
-    [_pdfView goToRect:CGRectMake(xPos.floatValue, iOSNormalisedY, _pageSpaceRect.size.width, _pageSpaceRect.size.height) onPage:_pdfView.currentPage];
+- (void)setScale:(FlutterMethodCall*)call result:(FlutterResult)result {
+    NSNumber* scale = call.arguments[@"scale"];
     _pdfView.scaleFactor = scale.doubleValue;
-
     result([NSNumber numberWithBool: YES]);
 }
 
@@ -326,12 +367,12 @@
 
 -(void)handleRenderCompleted: (NSNumber*)pages {
     [_controller invokeChannelMethod:@"onRender" arguments:@{@"pages" : pages}];
+    [self startObserving];
 }
 
-// TODO more of root?
-//- (void)onDraw {
-//    [_controller invokeChannelMethod:@"onDraw" arguments:@{}];
-//}
+- (void)handleOnDraw {
+    [_controller invokeChannelMethod:@"onDraw" arguments:@{}];
+}
 
 - (void)PDFViewWillClickOnLink:(PDFView *)sender
                        withURL:(NSURL *)url{
@@ -361,9 +402,9 @@
                 [self->_pdfView goToDestination:destination];
             }];
         } else {
-          [UIView animateWithDuration:0.2 animations:^{
-            self->_pdfView.scaleFactor = self->_pdfView.scaleFactorForSizeToFit;
-          }];
+            [UIView animateWithDuration:0.2 animations:^{
+                self->_pdfView.scaleFactor = self->_pdfView.scaleFactorForSizeToFit;
+            }];
         }
     }
 }

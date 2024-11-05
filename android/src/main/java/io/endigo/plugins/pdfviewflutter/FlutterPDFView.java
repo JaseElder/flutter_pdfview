@@ -1,8 +1,14 @@
 package io.endigo.plugins.pdfviewflutter;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.util.Log;
 import android.view.View;
 import android.net.Uri;
+
+import androidx.annotation.NonNull;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -12,8 +18,10 @@ import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.platform.PlatformView;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import com.github.barteksc.pdfviewer.PDFView;
 import com.github.barteksc.pdfviewer.PDFView.Configurator;
@@ -22,6 +30,7 @@ import com.github.barteksc.pdfviewer.util.Constants;
 import com.github.barteksc.pdfviewer.util.FitPolicy;
 
 import com.github.barteksc.pdfviewer.link.LinkHandler;
+import com.shockwave.pdfium.util.SizeF;
 
 public class FlutterPDFView implements PlatformView, MethodCallHandler {
     private final PDFView pdfView;
@@ -50,10 +59,10 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         }
 
         Object backgroundColor = params.get("hexBackgroundColor");
-        if(backgroundColor != null && backgroundColor instanceof String){
+        if(backgroundColor instanceof String){
             try {
                 pdfView.setBackgroundColor(Color.parseColor((String) backgroundColor));
-            }catch (IllegalArgumentException e){}
+            }catch (IllegalArgumentException ignored){}
         }
 
         if (config != null) {
@@ -69,7 +78,6 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                     .enableAnnotationRendering(true)
                     .linkHandler(linkHandler).
                     enableAntialiasing(false)
-                    // .fitEachPage(getBoolean(params,"fitEachPage"))
                     .onPageChange((page, total) -> {
                         Map<String, Object> args = new HashMap<>();
                         args.put("page", page);
@@ -113,11 +121,17 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
             case "currentPageSize":
                 getCurrentPageSize(result);
                 break;
-            case "getPositionAndScale":
-                getPositionAndScale(result);
+            case "getPosition":
+                getPosition(result);
                 break;
-            case "setPositionAndScale":
-                setPositionAndScale(methodCall, result);
+            case "getScale":
+                getScale(result);
+                break;
+            case "setPosition":
+                setPosition(methodCall, result);
+                break;
+            case "setScale":
+                setScale(methodCall, result);
                 break;
             case "getScreenshot":
                 getScreenshot(methodCall, result);
@@ -153,15 +167,20 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         result.success(new float[]{size.getWidth(), size.getHeight()});
     }
 
-    void getPositionAndScale(Result result) {
+    void getPosition(Result result) {
         float xOffset = pdfView.getCurrentXOffset();
         float yOffset = pdfView.getCurrentYOffset();
-        float zoom = pdfView.getZoom();
 
-        result.success(new float[]{xOffset, yOffset, zoom});
+        result.success(new float[]{xOffset, yOffset});
     }
 
-    void setPositionAndScale(MethodCall call, Result result) {
+    void getScale(Result result) {
+        float zoom = pdfView.getZoom();
+
+        result.success(zoom);
+    }
+
+    void setPosition(MethodCall call, Result result) {
         Double xPosObj = call.argument("xPos");
         double xOffset;
         if (xPosObj != null) {
@@ -178,21 +197,24 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
             // Handle null case, e.g., assign a default value
             yOffset = 0.0;
         }
+        pdfView.moveTo((float) xOffset, (float) yOffset);
+        pdfView.loadPages();
+        result.success(true);
+    }
+
+    void setScale(MethodCall call, Result result) {
         Double scaleObj = call.argument("scale");
         double zoom;
         if (scaleObj != null) {
             zoom = scaleObj; // Safe unboxing
         } else {
-            // Handle null case, e.g., assign a default value
             zoom = 1.0;
         }
 
         if (zoom != 1.0) {
             pdfView.zoomTo((float) zoom);
         }
-        pdfView.moveTo((float) xOffset, (float) yOffset);
         pdfView.loadPages();
-        //pdfView.refreshDrawableState();
         result.success(true);
     }
 

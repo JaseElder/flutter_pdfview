@@ -1,4 +1,4 @@
-group 'io.endigo.plugings.pdfview'
+group 'io.endigo.plugins.pdfview'
 version '1.0-SNAPSHOT'
 
 rootProject.allprojects {
@@ -27,6 +27,6 @@ android {
 
 dependencies {
     implementation 'com.github.lion1988dev:AndroidPdfViewer:3.2.4'
-    implementation 'androidx.annotation:annotation-jvm:1.7.1'
+    implementation 'androidx.annotation:annotation-jvm:1.9.1'
 }
 

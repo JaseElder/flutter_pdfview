@@ -141,8 +141,7 @@ class _PDFViewState extends State<PDFView> {
         ) {
           return AndroidViewSurface(
             controller: controller as AndroidViewController,
-            gestureRecognizers: widget.gestureRecognizers ??
-                const <Factory<OneSequenceGestureRecognizer>>{},
+            gestureRecognizers: widget.gestureRecognizers ?? const <Factory<OneSequenceGestureRecognizer>>{},
             hitTestBehavior: PlatformViewHitTestBehavior.opaque,
           );
         },
@@ -184,8 +183,7 @@ class _PDFViewState extends State<PDFView> {
   @override
   void didUpdateWidget(PDFView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _controller.future.then(
-            (PDFViewController controller) => controller._updateWidget(widget));
+    _controller.future.then((PDFViewController controller) => controller._updateWidget(widget));
   }
 }
 
@@ -222,20 +220,20 @@ class _CreationParams {
 }
 
 class _PDFViewSettings {
-  _PDFViewSettings(
-      {this.enableSwipe,
-        this.swipeHorizontal,
-        this.password,
-        this.nightMode,
-        this.autoSpacing,
-        this.pageFling,
-        this.pageSnap,
-        this.defaultPage,
-        this.fitPolicy,
-        // this.fitEachPage,
-        this.preventLinkNavigation,
-        this.backgroundColor,
-      });
+  _PDFViewSettings({
+    this.enableSwipe,
+    this.swipeHorizontal,
+    this.password,
+    this.nightMode,
+    this.autoSpacing,
+    this.pageFling,
+    this.pageSnap,
+    this.defaultPage,
+    this.fitPolicy,
+    // this.fitEachPage,
+    this.preventLinkNavigation,
+    this.backgroundColor,
+  });
 
   static _PDFViewSettings fromWidget(PDFView widget) {
     return _PDFViewSettings(
@@ -280,9 +278,7 @@ class _PDFViewSettings {
       'fitPolicy': fitPolicy.toString(),
       // 'fitEachPage': fitEachPage,
       'preventLinkNavigation': preventLinkNavigation,
-      "hexBackgroundColor" : backgroundColor == null
-          ? null
-          : "#${backgroundColor!.value.toRadixString(16)}",
+      "hexBackgroundColor": backgroundColor == null ? null : "#${backgroundColor!.value.toRadixString(16)}",
     };
   }
 
@@ -319,7 +315,8 @@ class PDFViewController {
 
   PDFView _widget;
 
-  Completer<void>? _setPositionAndScaleCompleter;
+  Completer<void>? _setPositionCompleter;
+  Completer<void>? _setScaleCompleter;
 
   Future<bool?> _onMethodCall(MethodCall call) async {
     switch (call.method) {
@@ -331,8 +328,7 @@ class PDFViewController {
         return null;
       case 'onPageChanged':
         if (_widget.onPageChanged != null) {
-          _widget.onPageChanged!(
-              call.arguments['page'], call.arguments['total']);
+          _widget.onPageChanged!(call.arguments['page'], call.arguments['total']);
         }
 
         return null;
@@ -381,31 +377,52 @@ class PDFViewController {
         .then((pageSize) => <String, double>{'width': pageSize[0] ?? 0, 'height': pageSize[1] ?? 0});
   }
 
-  Future<Map<String, double>> getVpPositionAndScale() async {
-    if (_setPositionAndScaleCompleter != null && !_setPositionAndScaleCompleter!.isCompleted) {
-      await _setPositionAndScaleCompleter!.future;
+  Future<Map<String, double>> getPosition() async {
+    if (_setPositionCompleter != null && !_setPositionCompleter!.isCompleted) {
+      await _setPositionCompleter!.future;
     }
 
-    final posAndScale = await _channel.invokeMethod('getPositionAndScale');
+    final posAndScale = await _channel.invokeMethod('getPosition');
     return <String, double>{
       'xPos': posAndScale[0] ?? 0,
       'yPos': posAndScale[1] ?? 0,
-      'scale': posAndScale[2] ?? 1,
     };
   }
 
-  Future<bool> setVpPositionAndScale(Offset position, double scale) async {
-    if (_setPositionAndScaleCompleter != null && !_setPositionAndScaleCompleter!.isCompleted) {
-      await _setPositionAndScaleCompleter!.future;
+  Future<double> getScale() async {
+    if (_setScaleCompleter != null && !_setScaleCompleter!.isCompleted) {
+      await _setScaleCompleter!.future;
     }
-    _setPositionAndScaleCompleter = Completer<void>();
-    final bool isSet = await _channel.invokeMethod('setPositionAndScale', <String, dynamic>{
+
+    final scale = await _channel.invokeMethod('getScale');
+    return scale ?? 1;
+  }
+
+  Future<bool> setPosition(Offset position) async {
+    if (_setPositionCompleter != null && !_setPositionCompleter!.isCompleted) {
+      await _setPositionCompleter!.future;
+    }
+    _setPositionCompleter = Completer<void>();
+    final bool isSet = await _channel.invokeMethod('setPosition', <String, double>{
       'xPos': position.dx,
       'yPos': position.dy,
+    });
+    if (!_setPositionCompleter!.isCompleted) {
+      _setPositionCompleter!.complete();
+    }
+    return isSet;
+  }
+
+  Future<bool> setScale(double scale) async {
+    if (_setScaleCompleter != null && !_setScaleCompleter!.isCompleted) {
+      await _setScaleCompleter!.future;
+    }
+    _setScaleCompleter = Completer<void>();
+    final bool isSet = await _channel.invokeMethod('setScale', <String, double>{
       'scale': scale,
     });
-    if (!_setPositionAndScaleCompleter!.isCompleted) {
-      _setPositionAndScaleCompleter!.complete();
+    if (!_setScaleCompleter!.isCompleted) {
+      _setScaleCompleter!.complete();
     }
     return isSet;
   }
