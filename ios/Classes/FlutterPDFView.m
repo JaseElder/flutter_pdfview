@@ -1,6 +1,3 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
 #import "FlutterPDFView.h"
 
 @implementation FLTPDFViewFactory {
@@ -109,11 +106,13 @@
     PDFView* _pdfView;
     UIScrollView* _scrollView;
     NSNumber* _pageCount;
-    NSNumber* _currentPage;
+    NSNumber* _currentPageIndex;
     PDFDestination* _currentDestination;
     BOOL _preventLinkNavigation;
     BOOL _autoSpacing;
     PDFPage* _defaultPage;
+    PDFPage* _currentPage;
+    int _pageNo;
     BOOL _defaultPageSet;
     CGFloat _screenScale;
     CGRect _pageSpaceRect;
@@ -265,16 +264,18 @@
         _defaultPageSet = true;
     }
     
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_pdfView.currentPage];
+    _currentPage = _pdfView.currentPage;
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_currentPage];
     _pageSpaceRectWidth = _pageSpaceRect.size.width;
     _pageSpaceRectHeight = _pageSpaceRect.size.height;
     _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
     _pageCount = [NSNumber numberWithUnsignedLong: _pdfView.document.pageCount];
-    NSNumber* pc = _pageCount;
     _documentHeight = _pdfView.documentView.bounds.size.height;
+    _pageNo = (int)[_pdfView.document indexForPage:_currentPage] + 1;
+    
     __weak __typeof__(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [weakSelf handleRenderCompleted:pc];
+        [weakSelf handleRenderCompleted:self->_pageCount];
     });
 }
 
@@ -294,11 +295,9 @@
 }
 
 - (void)getPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
-    PDFPage* currentPage = _pdfView.currentPage;
-    int pageNo = (int)[_pdfView.document indexForPage:currentPage] + 1;
-    float currentPageHeight = [currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.frame toPage:currentPage];
-    float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRectHeight + ((_pageCount.intValue - pageNo) * currentPageHeight) - _documentHeight) * _scaleRatio;
+    float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.frame toPage:_currentPage];
+    float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRectHeight + ((_pageCount.intValue - _pageNo) * currentPageHeight) - _documentHeight) * _scaleRatio;
     
     NSArray *position = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY]];
     result(position);
@@ -311,19 +310,15 @@
 
 - (void)setPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
-    float xPos = arguments[@"xPos"].floatValue;
-    float yPos = arguments[@"yPos"].floatValue;
-    PDFPage* currentPage = _pdfView.currentPage;
     _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
-    int pageNo = (int)[_pdfView.document indexForPage:currentPage] + 1;
-    float currentPageHeight = [currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
-    CGFloat iOSNormalisedY = (yPos / _scaleRatio) - _pageSpaceRectHeight - ((_pageCount.intValue - pageNo) * currentPageHeight) + _documentHeight;
+    float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
+    CGFloat iOSNormalisedY = (arguments[@"yPos"].floatValue / _scaleRatio) - _pageSpaceRectHeight - ((_pageCount.intValue - _pageNo) * currentPageHeight) + _documentHeight;
     
-    if (iOSNormalisedY > currentPageHeight - _pageSpaceRectHeight && pageNo > 1) {
-        currentPage = [_pdfView.document pageAtIndex:pageNo - 2];
+    if (iOSNormalisedY > currentPageHeight - _pageSpaceRectHeight && _pageNo > 1) {
+        _currentPage = [_pdfView.document pageAtIndex:_pageNo - 2];
         iOSNormalisedY -= currentPageHeight;
     }
-    [_pdfView goToRect:CGRectMake(xPos,  iOSNormalisedY, _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:currentPage];
+    [_pdfView goToRect:CGRectMake(arguments[@"xPos"].floatValue,  iOSNormalisedY, _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:_currentPage];
     
     result([NSNumber numberWithBool: YES]);
 }
@@ -335,8 +330,8 @@
 }
 
 - (void)getCurrentPage:(FlutterMethodCall*)call result:(FlutterResult)result {
-    _currentPage = [NSNumber numberWithUnsignedLong: [_pdfView.document indexForPage: _pdfView.currentPage]];
-    result(_currentPage);
+    _currentPageIndex = [NSNumber numberWithUnsignedLong: [_pdfView.document indexForPage: _pdfView.currentPage]];
+    result(_currentPageIndex);
 }
 
 - (void)setPage:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -362,7 +357,9 @@
 }
 
 -(void)handlePageChanged:(NSNotification*)notification {
-    [_controller invokeChannelMethod:@"onPageChanged" arguments:@{@"page" : [NSNumber numberWithUnsignedLong: [_pdfView.document indexForPage: _pdfView.currentPage]], @"total" : [NSNumber numberWithUnsignedLong: [_pdfView.document pageCount]]}];
+    _currentPage = _pdfView.currentPage;
+    _pageNo = (int)[_pdfView.document indexForPage:_currentPage] + 1;
+    [_controller invokeChannelMethod:@"onPageChanged" arguments:@{@"page" : [NSNumber numberWithUnsignedLong: _pageNo - 1], @"total" : [NSNumber numberWithUnsignedLong: [_pdfView.document pageCount]]}];
 }
 
 -(void)handleRenderCompleted: (NSNumber*)pages {
