@@ -278,7 +278,7 @@ class _PDFViewSettings {
       'fitPolicy': fitPolicy.toString(),
       // 'fitEachPage': fitEachPage,
       'preventLinkNavigation': preventLinkNavigation,
-      "hexBackgroundColor": backgroundColor == null ? null : "#${backgroundColor!.value.toRadixString(16)}",
+      "hexBackgroundColor": backgroundColor == null ? null : "#${backgroundColor!.toARGB32().toRadixString(16)}",
     };
   }
 
@@ -371,22 +371,17 @@ class PDFViewController {
     return pageCount;
   }
 
-  Future<Map<String, double>> getCurrentPageSize() async {
-    return _channel
-        .invokeMethod('currentPageSize')
-        .then((pageSize) => <String, double>{'width': pageSize[0] ?? 0, 'height': pageSize[1] ?? 0});
+  Future<Size> getCurrentPageSize() async {
+    return _channel.invokeMethod('currentPageSize').then((pageSize) => Size(pageSize[0] ?? 0, pageSize[1] ?? 0));
   }
 
-  Future<Map<String, double>> getPosition() async {
+  Future<Offset> getPosition() async {
     if (_setPositionCompleter != null && !_setPositionCompleter!.isCompleted) {
       await _setPositionCompleter!.future;
     }
 
-    final posAndScale = await _channel.invokeMethod('getPosition');
-    return <String, double>{
-      'xPos': posAndScale[0] ?? 0,
-      'yPos': posAndScale[1] ?? 0,
-    };
+    final position = await _channel.invokeMethod('getPosition');
+    return Offset(position[0] ?? 0, position[1] ?? 0);
   }
 
   Future<double> getScale() async {
