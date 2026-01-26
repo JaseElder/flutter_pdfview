@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() => runApp(MyApp());
 
@@ -120,8 +120,7 @@ class _MyAppState extends State<MyApp> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              PDFScreen(path: landscapePathPdf),
+                          builder: (context) => PDFScreen(path: landscapePathPdf),
                         ),
                       );
                     }
@@ -141,14 +140,29 @@ class _MyAppState extends State<MyApp> {
                   },
                 ),
                 TextButton(
+                  child: Text("Open PDF (iPad Safe Mode)"),
+                  onPressed: () {
+                    if (pathPDF.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PDFScreen(
+                            path: pathPDF,
+                            isIPadSafe: true,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                TextButton(
                   child: Text("Open Corrupted PDF"),
                   onPressed: () {
                     if (pathPDF.isNotEmpty) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                              PDFScreen(path: corruptedPathPDF),
+                          builder: (context) => PDFScreen(path: corruptedPathPDF),
                         ),
                       );
                     }
@@ -165,15 +179,15 @@ class _MyAppState extends State<MyApp> {
 
 class PDFScreen extends StatefulWidget {
   final String? path;
+  final bool isIPadSafe;
 
-  PDFScreen({Key? key, this.path}) : super(key: key);
+  PDFScreen({Key? key, this.path, this.isIPadSafe = false}) : super(key: key);
 
   _PDFScreenState createState() => _PDFScreenState();
 }
 
 class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
-  final Completer<PDFViewController> _controller =
-      Completer<PDFViewController>();
+  final Completer<PDFViewController> _controller = Completer<PDFViewController>();
   int? pages = 0;
   int? currentPage = 0;
   bool isReady = false;
@@ -195,17 +209,19 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
         children: <Widget>[
           PDFView(
             filePath: widget.path,
-            enableSwipe: true,
-            swipeHorizontal: true,
-            autoSpacing: false,
-            pageFling: true,
-            pageSnap: true,
+            // iPad Safe Mode: Avoid conflicting scroll configurations
+            enableSwipe: widget.isIPadSafe ? true : true,
+            swipeHorizontal:
+                widget.isIPadSafe ? false : true, // Vertical scrolling is safer on iPad
+            autoSpacing: widget.isIPadSafe ? true : false, // Let PDFKit handle spacing
+            pageFling: widget.isIPadSafe ? false : true, // Disable page fling to avoid conflicts
+            pageSnap: widget.isIPadSafe ? false : true, // Disable page snap for smoother scrolling
             defaultPage: currentPage!,
             fitPolicy: FitPolicy.BOTH,
-            preventLinkNavigation:
-                false, // if set to true the link is handled in flutter
-            // backgroundColor: Color(0xFFFEF7FF),
-            backgroundColor: Colors.green,
+            preventLinkNavigation: false, // if set to true the link is handled in flutter
+            backgroundColor: Color(0xFFFEF7FF),
+            nightMode: true,
+            // nightModeBackgroundColor: Colors.amber,
             onRender: (_pages) {
               setState(() {
                 pages = _pages;

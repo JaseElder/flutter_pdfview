@@ -1,3 +1,7 @@
+// Copyright 2018 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 #import <Flutter/Flutter.h>
 #import <PDFKit/PDFKit.h>
 
@@ -16,7 +20,7 @@ API_AVAILABLE(ios(11.0))
 @end
 
 API_AVAILABLE(ios(11.0))
-@interface FLTPDFView : UIView <FlutterPlatformView, PDFViewDelegate> //, UIScrollViewDelegate>
+@interface FLTPDFView : UIView <FlutterPlatformView, PDFViewDelegate, UIGestureRecognizerDelegate, UIScrollViewDelegate>
 - (instancetype)initWithFrame:(CGRect)frame
                     arguments:(id _Nullable)args
                     controller:(FLTPDFViewController*) controller;

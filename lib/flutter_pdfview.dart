@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/rendering.dart';
 
 typedef PDFViewCreatedCallback = void Function(PDFViewController controller);
 typedef RenderCallback = void Function(int? pages);
@@ -12,6 +12,8 @@ typedef PageChangedCallback = void Function(int? page, int? total);
 typedef ErrorCallback = void Function(dynamic error);
 typedef PageErrorCallback = void Function(int? page, dynamic error);
 typedef LinkHandlerCallback = void Function(String? uri);
+typedef LoadCompleteCallback = void Function(int? pages);
+typedef DrawCallback = void Function();
 
 enum FitPolicy { WIDTH, HEIGHT, BOTH }
 
@@ -26,6 +28,8 @@ class PDFView extends StatefulWidget {
     this.onError,
     this.onPageError,
     this.onLinkHandler,
+    this.onLoadComplete,
+    this.onDraw,
     this.gestureRecognizers,
     this.enableSwipe = true,
     this.swipeHorizontal = false,
@@ -34,6 +38,10 @@ class PDFView extends StatefulWidget {
     this.autoSpacing = true,
     this.pageFling = true,
     this.pageSnap = true,
+    this.enableAntialiasing = true,
+    this.useBestQuality = true,
+    this.enableRenderDuringScale = true,
+    this.thumbnailRatio = 0.8,
     this.fitEachPage = true,
     this.defaultPage = 0,
     this.fitPolicy = FitPolicy.WIDTH,
@@ -62,6 +70,8 @@ class PDFView extends StatefulWidget {
 
   /// Used with preventLinkNavigation=true. It's helpful to customize link navigation
   final LinkHandlerCallback? onLinkHandler;
+  final LoadCompleteCallback? onLoadComplete;
+  final DrawCallback? onDraw;
 
   /// Which gestures should be consumed by the pdf view.
   ///
@@ -101,6 +111,18 @@ class PDFView extends StatefulWidget {
   /// Indicates whether or not the viewer snaps to a page after the user has scrolled to it. If set to true, snapping is enabled.
   final bool pageSnap;
 
+  /// Controls whether the PDF renderer uses anti-aliasing (Android only).
+  final bool enableAntialiasing;
+
+  /// Improves render quality at the cost of performance (Android only).
+  final bool useBestQuality;
+
+  /// Renders during scale gestures for smoother zooming (Android only).
+  final bool enableRenderDuringScale;
+
+  /// Thumbnail ratio used by AndroidPdfViewer (Android only).
+  final double? thumbnailRatio;
+
   /// Represents the default page to display when the PDF document is loaded.
   final int defaultPage;
 
@@ -122,8 +144,7 @@ class PDFView extends StatefulWidget {
 }
 
 class _PDFViewState extends State<PDFView> {
-  final Completer<PDFViewController> _controller =
-      Completer<PDFViewController>();
+  final Completer<PDFViewController> _controller = Completer<PDFViewController>();
 
   @override
   Widget build(BuildContext context) {
@@ -136,8 +157,8 @@ class _PDFViewState extends State<PDFView> {
         ) {
           return AndroidViewSurface(
             controller: controller as AndroidViewController,
-            gestureRecognizers: widget.gestureRecognizers ??
-                const <Factory<OneSequenceGestureRecognizer>>{},
+            gestureRecognizers:
+                widget.gestureRecognizers ?? const <Factory<OneSequenceGestureRecognizer>>{},
             hitTestBehavior: PlatformViewHitTestBehavior.opaque,
           );
         },
@@ -165,8 +186,7 @@ class _PDFViewState extends State<PDFView> {
         creationParamsCodec: const StandardMessageCodec(),
       );
     }
-    return Text(
-        '$defaultTargetPlatform is not yet supported by the pdfview_flutter plugin');
+    return Text('$defaultTargetPlatform is not yet supported by the pdfview_flutter plugin');
   }
 
   void _onPlatformViewCreated(int id) {
@@ -180,8 +200,13 @@ class _PDFViewState extends State<PDFView> {
   @override
   void didUpdateWidget(PDFView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _controller.future.then(
-        (PDFViewController controller) => controller._updateWidget(widget));
+    _controller.future.then((PDFViewController controller) => controller._updateWidget(widget));
+  }
+
+  @override
+  void dispose() {
+    _controller.future.then((PDFViewController controller) => controller.dispose());
+    super.dispose();
   }
 }
 
@@ -226,6 +251,10 @@ class _PDFViewSettings {
     this.autoSpacing,
     this.pageFling,
     this.pageSnap,
+    this.enableAntialiasing,
+    this.useBestQuality,
+    this.enableRenderDuringScale,
+    this.thumbnailRatio,
     this.defaultPage,
     this.fitPolicy,
     this.preventLinkNavigation,
@@ -241,6 +270,10 @@ class _PDFViewSettings {
       autoSpacing: widget.autoSpacing,
       pageFling: widget.pageFling,
       pageSnap: widget.pageSnap,
+      enableAntialiasing: widget.enableAntialiasing,
+      useBestQuality: widget.useBestQuality,
+      enableRenderDuringScale: widget.enableRenderDuringScale,
+      thumbnailRatio: widget.thumbnailRatio,
       defaultPage: widget.defaultPage,
       fitPolicy: widget.fitPolicy,
       preventLinkNavigation: widget.preventLinkNavigation,
@@ -255,6 +288,10 @@ class _PDFViewSettings {
   final bool? autoSpacing;
   final bool? pageFling;
   final bool? pageSnap;
+  final bool? enableAntialiasing;
+  final bool? useBestQuality;
+  final bool? enableRenderDuringScale;
+  final double? thumbnailRatio;
   final int? defaultPage;
   final FitPolicy? fitPolicy;
   final bool? preventLinkNavigation;
@@ -270,12 +307,14 @@ class _PDFViewSettings {
       'autoSpacing': autoSpacing,
       'pageFling': pageFling,
       'pageSnap': pageSnap,
+      'enableAntialiasing': enableAntialiasing,
+      'useBestQuality': useBestQuality,
+      'enableRenderDuringScale': enableRenderDuringScale,
+      'thumbnailRatio': thumbnailRatio,
       'defaultPage': defaultPage,
       'fitPolicy': fitPolicy.toString(),
       'preventLinkNavigation': preventLinkNavigation,
-      "hexBackgroundColor": backgroundColor == null
-          ? null
-          : "#${backgroundColor!.value.toRadixString(16)}",
+      'backgroundColor': backgroundColor?.toARGB32(),
     };
   }
 
@@ -300,61 +339,138 @@ class _PDFViewSettings {
 class PDFViewController {
   PDFViewController._(
     int id,
-    this._widget,
-  ) : _channel = MethodChannel('plugins.endigo.io/pdfview_$id') {
-    _settings = _PDFViewSettings.fromWidget(_widget);
+    PDFView widget,
+  )   : _channel = MethodChannel('plugins.endigo.io/pdfview_$id'),
+        _widget = widget {
+    _settings = _PDFViewSettings.fromWidget(widget);
     _channel.setMethodCallHandler(_onMethodCall);
   }
 
-  final MethodChannel _channel;
+  void dispose() {
+    _channel.setMethodCallHandler(null);
+    _widget = null;
+  }
+
+  MethodChannel _channel;
 
   late _PDFViewSettings _settings;
 
-  PDFView _widget;
+  PDFView? _widget;
+
+  Completer<void>? _setPositionCompleter;
+  Completer<void>? _setScaleCompleter;
 
   Future<bool?> _onMethodCall(MethodCall call) async {
+    final widget = _widget;
+    if (widget == null) return null;
+
     switch (call.method) {
       case 'onRender':
-        if (_widget.onRender != null) {
-          _widget.onRender!(call.arguments['pages']);
-        }
-
+        widget.onRender?.call(call.arguments['pages']);
         return null;
       case 'onPageChanged':
-        if (_widget.onPageChanged != null) {
-          _widget.onPageChanged!(
-            call.arguments['page'],
-            call.arguments['total'],
-          );
-        }
-
+        widget.onPageChanged?.call(
+          call.arguments['page'],
+          call.arguments['total'],
+        );
         return null;
       case 'onError':
-        if (_widget.onError != null) {
-          _widget.onError!(call.arguments['error']);
-        }
-
+        widget.onError?.call(call.arguments['error']);
         return null;
       case 'onPageError':
-        if (_widget.onPageError != null) {
-          _widget.onPageError!(call.arguments['page'], call.arguments['error']);
-        }
-
+        widget.onPageError?.call(call.arguments['page'], call.arguments['error']);
         return null;
       case 'onLinkHandler':
-        if (_widget.onLinkHandler != null) {
-          _widget.onLinkHandler!(call.arguments);
-        }
+        widget.onLinkHandler?.call(call.arguments);
+        return null;
+      case 'onLoadComplete':
+        widget.onLoadComplete?.call(call.arguments['pages']);
+
+        return null;
+      case 'onDraw':
+        widget.onDraw!();
 
         return null;
     }
-    throw MissingPluginException(
-        '${call.method} was invoked but has no handler');
+    throw MissingPluginException('${call.method} was invoked but has no handler');
   }
 
   Future<int?> getPageCount() async {
     final int? pageCount = await _channel.invokeMethod('pageCount');
     return pageCount;
+  }
+
+  Future<Size> getCurrentPageSize() async {
+    return _channel
+        .invokeMethod('currentPageSize')
+        .then((pageSize) => Size(pageSize[0] ?? 0, pageSize[1] ?? 0));
+  }
+
+  Future<Offset> getPosition() async {
+    if (_setPositionCompleter != null && !_setPositionCompleter!.isCompleted) {
+      await _setPositionCompleter!.future;
+    }
+
+    final position = await _channel.invokeMethod('getPosition');
+    return Offset(position[0] ?? 0, position[1] ?? 0);
+  }
+
+  Future<double> getScale() async {
+    if (_setScaleCompleter != null && !_setScaleCompleter!.isCompleted) {
+      await _setScaleCompleter!.future;
+    }
+
+    final scale = await _channel.invokeMethod('getScale');
+    return scale ?? 1;
+  }
+
+  Future<bool> setPosition(Offset position) async {
+    if (_setPositionCompleter != null && !_setPositionCompleter!.isCompleted) {
+      await _setPositionCompleter!.future;
+    }
+    _setPositionCompleter = Completer<void>();
+    final bool isSet = await _channel.invokeMethod('setPosition', <String, double>{
+      'xPos': position.dx,
+      'yPos': position.dy,
+    });
+    if (!_setPositionCompleter!.isCompleted) {
+      _setPositionCompleter!.complete();
+    }
+    return isSet;
+  }
+
+  Future<bool> setScale(double scale) async {
+    if (_setScaleCompleter != null && !_setScaleCompleter!.isCompleted) {
+      await _setScaleCompleter!.future;
+    }
+    _setScaleCompleter = Completer<void>();
+    final bool isSet = await _channel.invokeMethod('setScale', <String, double>{
+      'scale': scale,
+    });
+    if (!_setScaleCompleter!.isCompleted) {
+      _setScaleCompleter!.complete();
+    }
+    return isSet;
+  }
+
+  Future<void> setZoomLimits(double minZoom, double midZoom, double maxZoom) async {
+    await _channel.invokeMethod('setZoomLimits', <String, dynamic>{
+      'minZoom': minZoom,
+      'midZoom': midZoom,
+      'maxZoom': maxZoom,
+    });
+  }
+
+  Future<String> getScreenshot(String fileName) async {
+    final String imageFileName = await _channel.invokeMethod('getScreenshot', <String, dynamic>{
+      'fileName': fileName,
+    });
+    return imageFileName;
+  }
+
+  Future<bool> reload() async {
+    final bool result = await _channel.invokeMethod('reload');
+    return result;
   }
 
   Future<int?> getCurrentPage() async {
@@ -363,8 +479,7 @@ class PDFViewController {
   }
 
   Future<bool?> setPage(int page) async {
-    final bool? isSet =
-        await _channel.invokeMethod('setPage', <String, dynamic>{
+    final bool? isSet = await _channel.invokeMethod('setPage', <String, dynamic>{
       'page': page,
     });
     return isSet;
