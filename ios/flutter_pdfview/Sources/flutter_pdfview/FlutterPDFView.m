@@ -89,7 +89,7 @@
     } else if ([[call method] isEqualToString:@"updateSettings"]) {
         [_pdfView onUpdateSettings:call result:result];
     } else if ([[call method] isEqualToString:@"setZoomLimits"]) {
-        [_pdfView setZoomLimits:call];
+        [_pdfView setZoomLimits:call result:result];
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -135,12 +135,12 @@
         _controller = controller;
         _screenScale = [[UIScreen mainScreen] scale];
 
-    // Detect if device is iPad
-    _isIPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
-    _isScrolling = NO;
+        // Detect if device is iPad
+        _isIPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
+        _isScrolling = NO;
 
-    _pdfView = [[PDFView alloc] initWithFrame: frame];
-    _pdfView.delegate = self;
+        _pdfView = [[PDFView alloc] initWithFrame: frame];
+        _pdfView.delegate = self;
 
         _autoSpacing = [args[@"autoSpacing"] boolValue];
         BOOL pageFling = [args[@"pageFling"] boolValue];
@@ -162,49 +162,49 @@
         }
 
 
-    if (document == nil) {
-        [_controller invokeChannelMethod:@"onError" arguments:@{@"error" : @"cannot create document: File not in PDF format or corrupted."}];
-    } else {
-        _pdfView.autoresizesSubviews = YES;
-        _pdfView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        _pdfView.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1.0];
-
-        BOOL swipeHorizontal = [args[@"swipeHorizontal"] boolValue];
-        if (swipeHorizontal) {
-            _pdfView.displayDirection = kPDFDisplayDirectionHorizontal;
+        if (document == nil) {
+            [_controller invokeChannelMethod:@"onError" arguments:@{@"error" : @"cannot create document: File not in PDF format or corrupted."}];
         } else {
-            _pdfView.displayDirection = kPDFDisplayDirectionVertical;
-        }
+            _pdfView.autoresizesSubviews = YES;
+            _pdfView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+            _pdfView.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1.0];
+
+            BOOL swipeHorizontal = [args[@"swipeHorizontal"] boolValue];
+            if (swipeHorizontal) {
+                _pdfView.displayDirection = kPDFDisplayDirectionHorizontal;
+            } else {
+                _pdfView.displayDirection = kPDFDisplayDirectionVertical;
+            }
 
             _pdfView.autoScales = _autoSpacing;
 
-        // On iPad, avoid conflicting display modes with page view controller
-        if (_isIPad && pageFling && enableSwipe) {
-            // For iPad with both pageFling and enableSwipe, prefer page-based navigation
-            [_pdfView usePageViewController:YES withViewOptions:nil];
-            _pdfView.displayMode = kPDFDisplaySinglePage;
-        } else {
-            [_pdfView usePageViewController:pageFling withViewOptions:nil];
-            _pdfView.displayMode = enableSwipe ? kPDFDisplaySinglePageContinuous : kPDFDisplaySinglePage;
-        }
-        _pdfView.displaysPageBreaks = NO;
-        _pdfView.document = document;
+            // On iPad, avoid conflicting display modes with page view controller
+            if (_isIPad && pageFling && enableSwipe) {
+                // For iPad with both pageFling and enableSwipe, prefer page-based navigation
+                [_pdfView usePageViewController:YES withViewOptions:nil];
+                _pdfView.displayMode = kPDFDisplaySinglePage;
+            } else {
+                [_pdfView usePageViewController:pageFling withViewOptions:nil];
+                _pdfView.displayMode = enableSwipe ? kPDFDisplaySinglePageContinuous : kPDFDisplaySinglePage;
+            }
+            _pdfView.displaysPageBreaks = NO;
+            _pdfView.document = document;
 
-        _pdfView.maxScaleFactor = [args[@"maxZoom"] doubleValue];
-        _pdfView.minScaleFactor = _pdfView.scaleFactorForSizeToFit;
+            _pdfView.maxScaleFactor = [args[@"maxZoom"] doubleValue];
+            _pdfView.minScaleFactor = _pdfView.scaleFactorForSizeToFit;
 
-        NSString* password = args[@"password"];
-        if ([password isKindOfClass:[NSString class]] && [_pdfView.document isEncrypted]) {
-            [_pdfView.document unlockWithPassword:password];
-        }
+            NSString* password = args[@"password"];
+            if ([password isKindOfClass:[NSString class]] && [_pdfView.document isEncrypted]) {
+                [_pdfView.document unlockWithPassword:password];
+            }
 
-        UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onDoubleTap:)];
-        tapGestureRecognizer.numberOfTapsRequired = 2;
-        tapGestureRecognizer.numberOfTouchesRequired = 1;
-        tapGestureRecognizer.delegate = self;
-        tapGestureRecognizer.delaysTouchesBegan = NO;
-        tapGestureRecognizer.delaysTouchesEnded = NO;
-        [_pdfView addGestureRecognizer:tapGestureRecognizer];
+            UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onDoubleTap:)];
+            tapGestureRecognizer.numberOfTapsRequired = 2;
+            tapGestureRecognizer.numberOfTouchesRequired = 1;
+            tapGestureRecognizer.delegate = self;
+            tapGestureRecognizer.delaysTouchesBegan = NO;
+            tapGestureRecognizer.delaysTouchesEnded = NO;
+            [_pdfView addGestureRecognizer:tapGestureRecognizer];
 
             NSUInteger pageCount = [document pageCount];
 
@@ -212,58 +212,57 @@
                 defaultPage = pageCount - 1;
             }
 
-        _defaultPage = [document pageAtIndex: defaultPage];
-        __weak __typeof__(self) weakSelf = self;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
-        });
-    }
-
-    // Configure scroll view with defensive handling for iPad
-    if (@available(iOS 11.0, *)) {
-        // Delay scroll view configuration to avoid conflicts during initialization
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            @try {
-                UIScrollView *scrollView = nil;
-
-                for (id subview in self->_pdfView.subviews) {
-                    if ([subview isKindOfClass: [UIScrollView class]]) {
-                        scrollView = subview;
-                        break;
-                    }
-                }
-
-                if (scrollView != nil) {
-                    // On iPad, use more conservative scroll configuration
-                    if (self->_isIPad) {
-                        // Allow system to manage insets on iPad for better compatibility
-                        scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
-
-                        // Set delegate to monitor scroll events
-                        if ([scrollView.delegate isEqual:nil]) {
-                            scrollView.delegate = (id<UIScrollViewDelegate>)self;
-                        }
-                    } else {
-                        // iPhone keeps existing behavior
-                        scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-                        if (@available(iOS 13.0, *)) {
-                            scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
-                        }
-                    }
-
-                    // Ensure scroll view recognizes gestures properly
-                    scrollView.delaysContentTouches = YES;
-                    scrollView.canCancelContentTouches = YES;
-                }
-            } @catch (NSException *exception) {
-                NSLog(@"Warning: Failed to configure PDF scroll view: %@", exception.reason);
-            }
-        });
-    }
-
-            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePageChanged:) name:PDFViewPageChangedNotification object:_pdfView];
-            [self addSubview:_pdfView];
+            _defaultPage = [document pageAtIndex: defaultPage];
+            __weak __typeof__(self) weakSelf = self;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
+            });
         }
+
+        // Configure scroll view with defensive handling for iPad
+        if (@available(iOS 11.0, *)) {
+            // Delay scroll view configuration to avoid conflicts during initialization
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                @try {
+                    UIScrollView *scrollView = nil;
+
+                    for (id subview in self->_pdfView.subviews) {
+                        if ([subview isKindOfClass: [UIScrollView class]]) {
+                            scrollView = subview;
+                            break;
+                        }
+                    }
+
+                    if (scrollView != nil) {
+                        // On iPad, use more conservative scroll configuration
+                        if (self->_isIPad) {
+                            // Allow system to manage insets on iPad for better compatibility
+                            scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+
+                            // Set delegate to monitor scroll events
+                            if ([scrollView.delegate isEqual:nil]) {
+                                scrollView.delegate = (id<UIScrollViewDelegate>)self;
+                            }
+                        } else {
+                            // iPhone keeps existing behavior
+                            scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+                            if (@available(iOS 13.0, *)) {
+                                scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
+                            }
+                        }
+
+                        // Ensure scroll view recognizes gestures properly
+                        scrollView.delaysContentTouches = YES;
+                        scrollView.canCancelContentTouches = YES;
+                    }
+                } @catch (NSException *exception) {
+                    NSLog(@"Warning: Failed to configure PDF scroll view: %@", exception.reason);
+                }
+            });
+        }
+
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePageChanged:) name:PDFViewPageChangedNotification object:_pdfView];
+        [self addSubview:_pdfView];
     }
     return self;
 }
@@ -403,7 +402,7 @@
 - (void)setPage:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
     NSNumber* page = arguments[@"page"];
-    
+
     [_pdfView goToPage: [_pdfView.document pageAtIndex: page.unsignedLongValue ]];
     result([NSNumber numberWithBool: YES]);
 }
@@ -412,7 +411,7 @@
     result(nil);
 }
 
-- (void)setZoomLimits:(FlutterMethodCall*)call {
+- (void)setZoomLimits:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
     NSNumber* minZoom = arguments[@"minZoom"];
     NSNumber* maxZoom = arguments[@"maxZoom"];
@@ -420,6 +419,7 @@
     float maxScale = maxZoom.floatValue * _pdfView.scaleFactorForSizeToFit;
     _pdfView.minScaleFactor = minScale != 0.0 ? minScale : minZoom.floatValue;
     _pdfView.maxScaleFactor = maxScale != 0.0 ? maxScale : maxZoom.floatValue;
+    result([NSNumber numberWithBool: YES]);
 }
 
 -(void)handlePageChanged:(NSNotification*)notification {

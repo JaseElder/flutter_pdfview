@@ -3,12 +3,23 @@ package io.endigo.plugins.pdfviewflutter;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
+import android.net.Uri;
 import android.util.Log;
 import android.view.View;
-import android.net.Uri;
 
 import androidx.annotation.NonNull;
+
+import com.github.barteksc.pdfviewer.PDFView;
+import com.github.barteksc.pdfviewer.PDFView.Configurator;
+import com.github.barteksc.pdfviewer.link.LinkHandler;
+import com.github.barteksc.pdfviewer.util.Constants;
+import com.github.barteksc.pdfviewer.util.FitPolicy;
+import com.shockwave.pdfium.util.SizeF;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -17,21 +28,6 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.platform.PlatformView;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-
-import com.github.barteksc.pdfviewer.PDFView;
-import com.github.barteksc.pdfviewer.PDFView.Configurator;
-import com.github.barteksc.pdfviewer.listener.*;
-import com.github.barteksc.pdfviewer.util.Constants;
-import com.github.barteksc.pdfviewer.util.FitPolicy;
-
-import com.github.barteksc.pdfviewer.link.LinkHandler;
-import com.shockwave.pdfium.util.SizeF;
-
 public class FlutterPDFView implements PlatformView, MethodCallHandler {
     private final PDFView pdfView;
     private final Configurator configurator;
@@ -39,7 +35,6 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     private final LinkHandler linkHandler;
     public static final String TAG = "FlutterPDFView";
 
-    @SuppressWarnings("unchecked")
     FlutterPDFView(Context context, BinaryMessenger messenger, int id, Map<String, Object> params) {
         pdfView = new PDFView(context, null);
         final boolean preventLinkNavigation = getBoolean(params, "preventLinkNavigation");
@@ -106,9 +101,9 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                         args.put("error", t.toString());
                         methodChannel.invokeMethod("onPageError", args);
                     }).onRender(pages -> {
-                                Map<String, Object> args = new HashMap<>();
-                                args.put("pages", pages);
-                                methodChannel.invokeMethod("onRender", args);
+                        Map<String, Object> args = new HashMap<>();
+                        args.put("pages", pages);
+                        methodChannel.invokeMethod("onRender", args);
                     }).onDraw((canvas, pageWidth, pageHeight, displayedPage) -> {
                         methodChannel.invokeMethod("onDraw", null);
                     }).onLoad(nbPages -> {
@@ -162,7 +157,7 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                 updateSettings(methodCall, result);
                 break;
             case "setZoomLimits":
-                setZoomLimits(methodCall);
+                setZoomLimits(methodCall, result);
                 break;
             default:
                 result.notImplemented();
@@ -231,30 +226,30 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         result.success(true);
     }
 
-    void setZoomLimits(MethodCall call) {
+    void setZoomLimits(MethodCall call, Result result) {
         Double minZoom = call.argument("minZoom");
         Double midZoom = call.argument("midZoom");
         Double maxZoom = call.argument("maxZoom");
         pdfView.setMinZoom((float) (minZoom != null ? minZoom : 1.0));
         pdfView.setMidZoom((float) (midZoom != null ? midZoom : 1.0));
         pdfView.setMaxZoom((float) (maxZoom != null ? maxZoom : 1.0));
+        result.success(true);
     }
 
     void getScreenshot(MethodCall call, Result result) {
         String pdfFileName = call.argument("fileName");
+        if (pdfFileName == null || pdfFileName.isEmpty()) {
+            result.error("FAIL", "fileName is required", null);
+            return;
+        }
         try {
-            assert pdfFileName != null;
             String imageFileName = pdfFileName.substring(0, pdfFileName.lastIndexOf("/")) + "/image.png";
             Bitmap bmp = loadBitmapFromPDFView();
             FileOutputStream fileOut = new FileOutputStream(imageFileName, false);
             bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOut);
             fileOut.close();
-            if (!Objects.equals(imageFileName, "")) {
-                Log.d(TAG, "getScreenshot: generate image success ");
-                result.success(imageFileName);
-            } else {
-                result.error("FAIL", "Failed to generate image", null);
-            }
+            Log.d(TAG, "getScreenshot: generate image success ");
+            result.success(imageFileName);
         } catch (Exception e) {
             result.error("FAIL", "Failed to generate image", e.getMessage());
         }
@@ -270,8 +265,12 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     }
 
     void reload(Result result) {
-        configurator.load();
-        result.success(true);
+        if (configurator != null) {
+            configurator.load();
+            result.success(true);
+        } else {
+            result.success(false);
+        }
     }
 
     void getCurrentPage(Result result) {
@@ -330,7 +329,7 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         methodChannel.setMethodCallHandler(null);
     }
 
-   private boolean getBoolean(Map<String, Object> params, String key) {
+    private boolean getBoolean(Map<String, Object> params, String key) {
         Boolean keyObj = (Boolean) params.get(key);
         boolean bKey;
         if (keyObj != null) {
@@ -345,7 +344,7 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         return params.containsKey(key) ? (String) params.get(key) : "";
     }
 
-   private int getInt(Map<String, Object> params, String key) {
+    private int getInt(Map<String, Object> params, String key) {
         Integer keyObj = (Integer) params.get(key);
         int intKey;
         if (keyObj != null) {

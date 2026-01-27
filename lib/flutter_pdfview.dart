@@ -388,7 +388,7 @@ class PDFViewController {
 
         return null;
       case 'onDraw':
-        widget.onDraw!();
+        widget.onDraw?.call();
 
         return null;
     }
@@ -453,8 +453,8 @@ class PDFViewController {
     return isSet;
   }
 
-  Future<void> setZoomLimits(double minZoom, double midZoom, double maxZoom) async {
-    await _channel.invokeMethod('setZoomLimits', <String, dynamic>{
+  Future<bool> setZoomLimits(double minZoom, double midZoom, double maxZoom) async {
+    return await _channel.invokeMethod('setZoomLimits', <String, dynamic>{
       'minZoom': minZoom,
       'midZoom': midZoom,
       'maxZoom': maxZoom,
