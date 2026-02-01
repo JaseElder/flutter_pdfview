@@ -39,7 +39,7 @@
                     arguments:(id _Nullable)args
               binaryMessenger:(NSObject<FlutterBinaryMessenger>*)messenger {
     self = [super init];
-    _pdfView = [[FLTPDFView new] initWithFrame:frame arguments:args controller:self];
+    _pdfView = [[FLTPDFView alloc] initWithFrame:frame arguments:args controller:self];
     _viewId = viewId;
 
     @try  {
@@ -211,7 +211,10 @@
             [_pdfView addGestureRecognizer:tapGestureRecognizer];
 
             NSUInteger pageCount = [_document pageCount];
-
+            if (pageCount == 0) {
+                [_controller invokeChannelMethod:@"onError" arguments:@{@"error" : @"PDF has no pages."}];
+                return self;
+            }
             if (pageCount <= defaultPage) {
                 defaultPage = pageCount - 1;
             }
@@ -257,7 +260,7 @@
                         }
                         __weak __typeof__(self) weakSelf = self;
                         dispatch_async(dispatch_get_main_queue(), ^{
-                            [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [_document pageCount]]];
+                            [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [self->_document pageCount]]];
                         });
                     } @catch (NSException *exception) {
                         NSLog(@"Warning: Failed to configure PDF scroll view: %@",

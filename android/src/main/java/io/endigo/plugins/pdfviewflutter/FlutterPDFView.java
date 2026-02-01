@@ -243,18 +243,19 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
             return;
         }
         try {
-            File parent = new File(pdfFileName).getParentFile();
+            File outputFile = new File(pdfFileName);
+            File parent = outputFile.getParentFile();
             if (parent == null) {
                 result.error("FAIL", "fileName must include a directory path", null);
                 return;
             }
-            String imageFileName = new File(parent, "image.png").getAbsolutePath();
+            String imageFileName = outputFile.getAbsolutePath();
             Bitmap bmp = loadBitmapFromPDFView();
             if (bmp == null) {
                 result.error("FAIL", "PDFView is not laid out yet", null);
                 return;
             }
-            FileOutputStream fileOut = new FileOutputStream(imageFileName, false);
+            FileOutputStream fileOut = new FileOutputStream(outputFile, false);
             bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOut);
             fileOut.close();
             Log.d(TAG, "getScreenshot: generate image success ");
