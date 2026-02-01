@@ -129,6 +129,7 @@
     BOOL _isIPad;
     BOOL _isScrolling;
     BOOL _didLoadComplete;
+    BOOL _isObserving;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -281,21 +282,23 @@
 }
 
 - (void)startObserving {
-    if (_scrollView) {
+    if (_scrollView && !_isObserving) {
         [_scrollView addObserver:self
                       forKeyPath:@"contentOffset"
                          options:NSKeyValueObservingOptionNew | NSKeyValueObservingOptionOld
                          context:nil];
+        _isObserving = YES;
     }
 }
 
 - (void)stopObserving {
-    if (_scrollView) {
+    if (_scrollView && _isObserving) {
         @try
         {
             [_scrollView removeObserver:self forKeyPath:@"contentOffset"];
         }
         @catch (NSException * __unused exception) {}
+        _isObserving = NO;
     }
 }
 
@@ -373,6 +376,10 @@
 }
 
 - (void)getPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
+    if (_currentPage == nil || _pageCount == nil) {
+        result([FlutterError errorWithCode:@"INVALID_STATE" message:@"PDFView not ready" details:nil]);
+        return;
+    }
     float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
     _pageSpaceRect = [_pdfView convertRect:_pdfView.frame toPage:_currentPage];
     float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRectHeight + ((_pageCount.intValue - _pageNo) * currentPageHeight) - _documentHeight) * _scaleRatio;
@@ -387,6 +394,10 @@
 }
 
 - (void)setPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
+    if (_currentPage == nil || _pageCount == nil) {
+        result([FlutterError errorWithCode:@"INVALID_STATE" message:@"PDFView not ready" details:nil]);
+        return;
+    }
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
     _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
     float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
@@ -396,13 +407,18 @@
         _currentPage = [_pdfView.document pageAtIndex:_pageNo - 2];
         iOSNormalisedY -= currentPageHeight;
     }
-    [_pdfView goToRect:CGRectMake(arguments[@"xPos"].floatValue,  iOSNormalisedY, _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:_currentPage];
+    [_pdfView goToRect:CGRectMake(arguments[@"xPos"].floatValue, iOSNormalisedY,
+                                  _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:_currentPage];
 
     result([NSNumber numberWithBool: YES]);
 }
 
 - (void)setScale:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSNumber* scale = call.arguments[@"scale"];
+    if (![scale isKindOfClass:[NSNumber class]] || scale.doubleValue <= 0.0) {
+        result([FlutterError errorWithCode:@"INVALID_ARGS" message:@"scale must be > 0" details:nil]);
+        return;
+    }
     _pdfView.scaleFactor = scale.doubleValue;
     result([NSNumber numberWithBool: YES]);
 }

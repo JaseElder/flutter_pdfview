@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.net.Uri;
-import android.util.Log;
 import android.view.View;
 
 import androidx.annotation.NonNull;
@@ -237,9 +236,16 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         Double minZoom = call.argument("minZoom");
         Double midZoom = call.argument("midZoom");
         Double maxZoom = call.argument("maxZoom");
-        pdfView.setMinZoom((float) (minZoom != null ? minZoom : 1.0));
-        pdfView.setMidZoom((float) (midZoom != null ? midZoom : 1.0));
-        pdfView.setMaxZoom((float) (maxZoom != null ? maxZoom : 1.0));
+        double minZ = (minZoom != null ? minZoom : 1.0);
+        double midZ = (midZoom != null ? midZoom : 1.0);
+        double maxZ = (maxZoom != null ? maxZoom : 1.0);
+        if (minZ <= 0 || midZ <= 0 || maxZ <= 0 || minZ > midZ || midZ > maxZ) {
+            result.error("INVALID_ARGS", "Expected 0 < minZoom ≤ midZoom ≤ maxZoom", null);
+            return;
+        }
+        pdfView.setMinZoom((float) minZ);
+        pdfView.setMidZoom((float) midZ);
+        pdfView.setMaxZoom((float) maxZ);
         result.success(true);
     }
 
