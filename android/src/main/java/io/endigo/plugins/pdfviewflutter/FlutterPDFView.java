@@ -170,8 +170,15 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     }
 
     void getCurrentPageSize(Result result) {
+        if (pdfView.getPageCount() == 0) {
+            result.error("INVALID_STATE", "No pages loaded", null);
+            return;
+        }
         SizeF size = pdfView.getPageSize(pdfView.getCurrentPage());
-
+        if (size == null) {
+            result.error("FAIL", "Could not get page size", null);
+            return;
+        }
         result.success(new float[]{size.getWidth(), size.getHeight()});
     }
 
@@ -255,10 +262,11 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                 result.error("FAIL", "PDFView is not laid out yet", null);
                 return;
             }
-            FileOutputStream fileOut = new FileOutputStream(outputFile, false);
-            bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOut);
-            fileOut.close();
-            Log.d(TAG, "getScreenshot: generate image success ");
+            try (FileOutputStream fileOut = new FileOutputStream(outputFile, false)) {
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOut);
+            } finally {
+                bmp.recycle();
+            }
             result.success(imageFileName);
         } catch (Exception e) {
             result.error("FAIL", "Failed to generate image", e.getMessage());

@@ -417,9 +417,12 @@
     if (_document.pageCount > 0) {
         PDFPage *firstPage = [_document pageAtIndex:0];
         [_pdfView goToPage:firstPage];
+
+        CGRect pageBounds = [firstPage boundsForBox:kPDFDisplayBoxMediaBox];
+        [self->_pdfView goToRect:CGRectMake(0, pageBounds.size.height, 1, 1) onPage:firstPage];
+
+        _pdfView.scaleFactor = _pdfView.scaleFactorForSizeToFit;
     }
-    [_pdfView goToRect:CGRectMake(0.0f,  _documentHeight, _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:_pdfView.currentPage];
-    _pdfView.scaleFactor = _pdfView.scaleFactorForSizeToFit;
 
     result([NSNumber numberWithBool: YES]);
 }
@@ -427,8 +430,14 @@
 - (void)setPage:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
     NSNumber* page = arguments[@"page"];
+    NSUInteger pageIndex = page.unsignedLongValue;
+    NSUInteger pageCount = [_pdfView.document pageCount];
+    if (pageIndex >= pageCount) {
+        result([FlutterError errorWithCode:@"INVALID_PAGE" message:@"Page index out of bounds" details:nil]);
+        return;
+    }
 
-    [_pdfView goToPage: [_pdfView.document pageAtIndex: page.unsignedLongValue ]];
+    [_pdfView goToPage: [_pdfView.document pageAtIndex: pageIndex ]];
     result([NSNumber numberWithBool: YES]);
 }
 
