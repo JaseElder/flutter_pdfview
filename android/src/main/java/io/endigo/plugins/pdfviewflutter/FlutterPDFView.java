@@ -243,8 +243,17 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
             return;
         }
         try {
-            String imageFileName = pdfFileName.substring(0, pdfFileName.lastIndexOf("/")) + "/image.png";
+            File parent = new File(pdfFileName).getParentFile();
+            if (parent == null) {
+                result.error("FAIL", "fileName must include a directory path", null);
+                return;
+            }
+            String imageFileName = new File(parent, "image.png").getAbsolutePath();
             Bitmap bmp = loadBitmapFromPDFView();
+            if (bmp == null) {
+                result.error("FAIL", "PDFView is not laid out yet", null);
+                return;
+            }
             FileOutputStream fileOut = new FileOutputStream(imageFileName, false);
             bmp.compress(Bitmap.CompressFormat.PNG, 100, fileOut);
             fileOut.close();
@@ -256,9 +265,12 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     }
 
     Bitmap loadBitmapFromPDFView() {
-        Bitmap bitmap = Bitmap.createBitmap(
-                pdfView.getWidth(), pdfView.getHeight(), Bitmap.Config.ARGB_8888
-        );
+        int width = pdfView.getWidth();
+        int height = pdfView.getHeight();
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         pdfView.draw(canvas);
         return bitmap;

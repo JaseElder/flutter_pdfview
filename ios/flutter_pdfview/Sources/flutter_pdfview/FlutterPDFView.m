@@ -1,6 +1,3 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
 #import "./include/flutter_pdfview/FlutterPDFView.h"
 
 @implementation FLTPDFViewFactory {
@@ -90,6 +87,10 @@
         [_pdfView onUpdateSettings:call result:result];
     } else if ([[call method] isEqualToString:@"setZoomLimits"]) {
         [_pdfView setZoomLimits:call result:result];
+    } else if ([[call method] isEqualToString:@"reload"]) {
+        [_pdfView reload:call result:result];
+    } else if ([[call method] isEqualToString:@"getScreenshot"]) {
+        result([FlutterError errorWithCode:@"UNSUPPORTED" message:@"getScreenshot is not implemented on iOS" details:nil]);
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -108,6 +109,7 @@
 @implementation FLTPDFView {
     FLTPDFViewController* __weak _controller;
     PDFView* _pdfView;
+    PDFDocument* _document;
     UIScrollView* _scrollView;
     NSNumber* _pageCount;
     NSNumber* _currentPageIndex;
@@ -126,12 +128,15 @@
     CGFloat _documentHeight;
     BOOL _isIPad;
     BOOL _isScrolling;
+    BOOL _didLoadComplete;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
                     arguments:(id _Nullable)args
                    controller:(nonnull FLTPDFViewController *)controller {
-    if ([super init]) {
+
+    self = [super initWithFrame:frame];
+    if (self) {
         _controller = controller;
         _screenScale = [[UIScreen mainScreen] scale];
 
@@ -152,17 +157,16 @@
         NSString* filePath = args[@"filePath"];
         FlutterStandardTypedData* pdfData = args[@"pdfData"];
 
-        PDFDocument* document;
         if ([filePath isKindOfClass:[NSString class]]) {
             NSURL* sourcePDFUrl = [NSURL fileURLWithPath:filePath];
-            document = [[PDFDocument alloc] initWithURL: sourcePDFUrl];
+            _document = [[PDFDocument alloc] initWithURL: sourcePDFUrl];
         } else if ([pdfData isKindOfClass:[FlutterStandardTypedData class]]) {
             NSData* sourcePDFdata = [pdfData data];
-            document = [[PDFDocument alloc] initWithData: sourcePDFdata];
+            _document = [[PDFDocument alloc] initWithData: sourcePDFdata];
         }
 
 
-        if (document == nil) {
+        if (_document == nil) {
             [_controller invokeChannelMethod:@"onError" arguments:@{@"error" : @"cannot create document: File not in PDF format or corrupted."}];
         } else {
             _pdfView.autoresizesSubviews = YES;
@@ -188,7 +192,7 @@
                 _pdfView.displayMode = enableSwipe ? kPDFDisplaySinglePageContinuous : kPDFDisplaySinglePage;
             }
             _pdfView.displaysPageBreaks = NO;
-            _pdfView.document = document;
+            _pdfView.document = _document;
 
             _pdfView.maxScaleFactor = [args[@"maxZoom"] doubleValue];
             _pdfView.minScaleFactor = _pdfView.scaleFactorForSizeToFit;
@@ -206,63 +210,65 @@
             tapGestureRecognizer.delaysTouchesEnded = NO;
             [_pdfView addGestureRecognizer:tapGestureRecognizer];
 
-            NSUInteger pageCount = [document pageCount];
+            NSUInteger pageCount = [_document pageCount];
 
             if (pageCount <= defaultPage) {
                 defaultPage = pageCount - 1;
             }
 
-            _defaultPage = [document pageAtIndex: defaultPage];
-            __weak __typeof__(self) weakSelf = self;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [document pageCount]]];
-            });
-        }
+            _defaultPage = [_document pageAtIndex: defaultPage];
 
-        // Configure scroll view with defensive handling for iPad
-        if (@available(iOS 11.0, *)) {
-            // Delay scroll view configuration to avoid conflicts during initialization
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                @try {
-                    UIScrollView *scrollView = nil;
+            // Configure scroll view with defensive handling for iPad
+            if (@available(iOS 11.0, *)) {
+                // Delay scroll view configuration to avoid conflicts during initialization
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    @try {
+                        UIScrollView *scrollView = nil;
 
-                    for (id subview in self->_pdfView.subviews) {
-                        if ([subview isKindOfClass: [UIScrollView class]]) {
-                            scrollView = subview;
-                            break;
-                        }
-                    }
-
-                    if (scrollView != nil) {
-                        // On iPad, use more conservative scroll configuration
-                        if (self->_isIPad) {
-                            // Allow system to manage insets on iPad for better compatibility
-                            scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
-
-                            // Set delegate to monitor scroll events
-                            if ([scrollView.delegate isEqual:nil]) {
-                                scrollView.delegate = (id<UIScrollViewDelegate>)self;
-                            }
-                        } else {
-                            // iPhone keeps existing behavior
-                            scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-                            if (@available(iOS 13.0, *)) {
-                                scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
+                        for (id subview in self->_pdfView.subviews) {
+                            if ([subview isKindOfClass:[UIScrollView class]]) {
+                                scrollView = subview;
+                                break;
                             }
                         }
 
-                        // Ensure scroll view recognizes gestures properly
-                        scrollView.delaysContentTouches = YES;
-                        scrollView.canCancelContentTouches = YES;
-                    }
-                } @catch (NSException *exception) {
-                    NSLog(@"Warning: Failed to configure PDF scroll view: %@", exception.reason);
-                }
-            });
-        }
+                        if (scrollView != nil) {
+                            // On iPad, use more conservative scroll configuration
+                            if (self->_isIPad) {
+                                // Allow system to manage insets on iPad for better compatibility
+                                scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
 
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePageChanged:) name:PDFViewPageChangedNotification object:_pdfView];
-        [self addSubview:_pdfView];
+                                // Set delegate to monitor scroll events
+                                if ([scrollView.delegate isEqual:nil]) {
+                                    scrollView.delegate = (id <UIScrollViewDelegate>) self;
+                                }
+                            } else {
+                                // iPhone keeps existing behavior
+                                scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+                                if (@available(iOS 13.0, *)) {
+                                    scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
+                                }
+                            }
+
+                            // Ensure scroll view recognizes gestures properly
+                            scrollView.delaysContentTouches = YES;
+                            scrollView.canCancelContentTouches = YES;
+                            self->_scrollView = scrollView;
+                        }
+                        __weak __typeof__(self) weakSelf = self;
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [weakSelf handleRenderCompleted:[NSNumber numberWithUnsignedLong: [_document pageCount]]];
+                        });
+                    } @catch (NSException *exception) {
+                        NSLog(@"Warning: Failed to configure PDF scroll view: %@",
+                              exception.reason);
+                    }
+                });
+            }
+
+            [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePageChanged:) name:PDFViewPageChangedNotification object:_pdfView];
+            [self addSubview:_pdfView];
+        }
     }
     return self;
 }
@@ -282,7 +288,11 @@
 
 - (void)stopObserving {
     if (_scrollView) {
-        [_scrollView removeObserver:self forKeyPath:@"contentOffset"];
+        @try
+        {
+            [_scrollView removeObserver:self forKeyPath:@"contentOffset"];
+        }
+        @catch (NSException * __unused exception) {}
     }
 }
 
@@ -399,6 +409,18 @@
     result(_currentPageIndex);
 }
 
+- (void)reload:(FlutterMethodCall*)call result:(FlutterResult)result {
+    _pdfView.document = _document;
+    if (_document.pageCount > 0) {
+        PDFPage *firstPage = [_document pageAtIndex:0];
+        [_pdfView goToPage:firstPage];
+    }
+    [_pdfView goToRect:CGRectMake(0.0f,  _documentHeight, _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:_pdfView.currentPage];
+    _pdfView.scaleFactor = _pdfView.scaleFactorForSizeToFit;
+
+    result([NSNumber numberWithBool: YES]);
+}
+
 - (void)setPage:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
     NSNumber* page = arguments[@"page"];
@@ -430,6 +452,10 @@
 
 -(void)handleRenderCompleted: (NSNumber*)pages {
     [_controller invokeChannelMethod:@"onRender" arguments:@{@"pages" : pages}];
+    if (!_didLoadComplete) {
+        _didLoadComplete = YES;
+        [_controller invokeChannelMethod:@"onLoadComplete" arguments:@{@"pages" : pages}];
+    }
     [self startObserving];
 }
 

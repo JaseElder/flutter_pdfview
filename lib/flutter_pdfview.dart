@@ -385,11 +385,9 @@ class PDFViewController {
         return null;
       case 'onLoadComplete':
         widget.onLoadComplete?.call(call.arguments['pages']);
-
         return null;
       case 'onDraw':
         widget.onDraw?.call();
-
         return null;
     }
     throw MissingPluginException('${call.method} was invoked but has no handler');
