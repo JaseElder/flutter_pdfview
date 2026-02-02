@@ -195,7 +195,7 @@
             _pdfView.displaysPageBreaks = NO;
             _pdfView.document = _document;
 
-            _pdfView.maxScaleFactor = [args[@"maxZoom"] doubleValue];
+            _pdfView.maxScaleFactor = 4.0;
             _pdfView.minScaleFactor = _pdfView.scaleFactorForSizeToFit;
 
             NSString* password = args[@"password"];
@@ -331,8 +331,6 @@
     // Wrap layout updates in try-catch for safety
     @try {
         _pdfView.frame = self.frame;
-        _pdfView.minScaleFactor = _pdfView.scaleFactorForSizeToFit;
-        _pdfView.maxScaleFactor = 4.0;
         if (_autoSpacing) {
             _pdfView.scaleFactor = _pdfView.scaleFactorForSizeToFit;
         }
@@ -381,7 +379,7 @@
         return;
     }
     float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.frame toPage:_currentPage];
+    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_currentPage];
     float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRectHeight + ((_pageCount.intValue - _pageNo) * currentPageHeight) - _documentHeight) * _scaleRatio;
 
     NSArray *position = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY]];
