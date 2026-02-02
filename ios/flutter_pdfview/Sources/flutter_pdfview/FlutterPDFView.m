@@ -522,7 +522,7 @@
                     PDFRect rect = [page boundsForBox:kPDFDisplayBoxMediaBox];
                     PDFDestination* destination = [[PDFDestination alloc] initWithPage:page atPoint:CGPointMake(pdfPoint.x - (rect.size.width / 4),pdfPoint.y + (rect.size.height / 4))];
                     [UIView animateWithDuration:0.2 animations:^{
-                        self-> _pdfView.scaleFactor = self->_pdfView.scaleFactorForSizeToFit *2;
+                        self-> _pdfView.scaleFactor = self->_pdfView.scaleFactorForSizeToFit * 2;
                         [self->_pdfView goToDestination:destination];
                     }];
                 }
