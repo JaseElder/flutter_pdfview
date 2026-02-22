@@ -120,12 +120,6 @@
     PDFPage* _currentPage;
     int _pageNo;
     BOOL _defaultPageSet;
-    CGFloat _screenScale;
-    CGRect _pageSpaceRect;
-    CGFloat _pageSpaceRectWidth;
-    CGFloat _pageSpaceRectHeight;
-    CGFloat _scaleRatio;
-    CGFloat _documentHeight;
     BOOL _isIPad;
     BOOL _isScrolling;
     BOOL _didLoadComplete;
@@ -139,7 +133,6 @@
     self = [super initWithFrame:frame];
     if (self) {
         _controller = controller;
-        _screenScale = [[UIScreen mainScreen] scale];
 
         // Detect if device is iPad
         _isIPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
@@ -344,12 +337,7 @@
     }
 
     _currentPage = _pdfView.currentPage;
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_currentPage];
-    _pageSpaceRectWidth = _pageSpaceRect.size.width;
-    _pageSpaceRectHeight = _pageSpaceRect.size.height;
-    _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
     _pageCount = [NSNumber numberWithUnsignedLong: _pdfView.document.pageCount];
-    _documentHeight = _pdfView.documentView.bounds.size.height;
     _pageNo = (int)[_pdfView.document indexForPage:_currentPage] + 1;
 
     __weak __typeof__(self) weakSelf = self;
@@ -373,16 +361,30 @@
     result(size);
 }
 
+- (NSArray *)calculatePosition {
+  float x = 0.0;
+  float y = 0.0;
+
+  if (_scrollView) {
+    if (@available(iOS 11.0, *)) {
+      x = -(_scrollView.contentOffset.x + _scrollView.adjustedContentInset.left);
+      y = -(_scrollView.contentOffset.y + _scrollView.adjustedContentInset.top);
+    } else {
+      x = -(_scrollView.contentOffset.x + _scrollView.contentInset.left);
+      y = -(_scrollView.contentOffset.y + _scrollView.contentInset.top);
+    }
+  }
+
+  return
+      @[ [NSNumber numberWithFloat:MAX(x, 0)], [NSNumber numberWithFloat:y] ];
+}
+
 - (void)getPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
     if (_currentPage == nil || _pageCount == nil) {
         result([FlutterError errorWithCode:@"INVALID_STATE" message:@"PDFView not ready" details:nil]);
         return;
     }
-    float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
-    _pageSpaceRect = [_pdfView convertRect:_pdfView.bounds toPage:_currentPage];
-    float flutterNormalisedY = (_pageSpaceRect.origin.y + _pageSpaceRectHeight + ((_pageCount.intValue - _pageNo) * currentPageHeight) - _documentHeight) * _scaleRatio;
-
-    NSArray *position = @[[NSNumber numberWithFloat:MAX(_pageSpaceRect.origin.x, 0)], [NSNumber numberWithFloat:flutterNormalisedY]];
+    NSArray *position = [self calculatePosition];
     result(position);
 }
 
@@ -391,24 +393,47 @@
     result(scale);
 }
 
-- (void)setPosition:(FlutterMethodCall*)call result:(FlutterResult)result {
+- (void)setPosition:(FlutterMethodCall *)call result:(FlutterResult)result {
     if (_currentPage == nil || _pageCount == nil) {
-        result([FlutterError errorWithCode:@"INVALID_STATE" message:@"PDFView not ready" details:nil]);
+        result([FlutterError errorWithCode:@"INVALID_STATE"
+                                   message:@"PDFView not ready"
+                                   details:nil]);
         return;
     }
-    NSDictionary<NSString*, NSNumber*>* arguments = [call arguments];
-    _scaleRatio = _screenScale * ((_pdfView.scaleFactorForSizeToFit == 0.0) ? 1.0 : _pdfView.scaleFactorForSizeToFit);
-    float currentPageHeight = [_currentPage boundsForBox:kPDFDisplayBoxMediaBox].size.height;
-    CGFloat iOSNormalisedY = (arguments[@"yPos"].floatValue / _scaleRatio) - _pageSpaceRectHeight - ((_pageCount.intValue - _pageNo) * currentPageHeight) + _documentHeight;
 
-    if (iOSNormalisedY > currentPageHeight - _pageSpaceRectHeight && _pageNo > 1) {
-        _currentPage = [_pdfView.document pageAtIndex:_pageNo - 2];
-        iOSNormalisedY -= currentPageHeight;
+    NSDictionary<NSString *, NSNumber *> *arguments = [call arguments];
+
+    if (_scrollView) {
+        float targetX = -arguments[@"xPos"].floatValue;
+        float targetY = -arguments[@"yPos"].floatValue;
+
+        CGPoint targetOffset = CGPointMake(targetX, targetY);
+
+        float minOffsetY = 0.0;
+        float maxOffsetY = 0.0;
+
+        if (@available(iOS 11.0, *)) {
+            targetOffset.x -= _scrollView.adjustedContentInset.left;
+            targetOffset.y -= _scrollView.adjustedContentInset.top;
+            minOffsetY = -_scrollView.adjustedContentInset.top;
+            maxOffsetY = MAX(minOffsetY, _scrollView.contentSize.height - _scrollView.bounds.size.height + _scrollView.adjustedContentInset.bottom);
+        } else {
+            targetOffset.x -= _scrollView.contentInset.left;
+            targetOffset.y -= _scrollView.contentInset.top;
+            minOffsetY = -_scrollView.contentInset.top;
+            maxOffsetY = MAX(minOffsetY, _scrollView.contentSize.height - _scrollView.bounds.size.height + _scrollView.contentInset.bottom);
+        }
+
+        if (targetOffset.y < minOffsetY) {
+            targetOffset.y = minOffsetY;
+        } else if (targetOffset.y > maxOffsetY) {
+            targetOffset.y = maxOffsetY;
+        }
+        
+        [_scrollView setContentOffset:targetOffset animated:NO];
     }
-    [_pdfView goToRect:CGRectMake(arguments[@"xPos"].floatValue, iOSNormalisedY,
-                                  _pageSpaceRectWidth, _pageSpaceRectHeight) onPage:_currentPage];
 
-    result([NSNumber numberWithBool: YES]);
+    result([NSNumber numberWithBool:YES]);
 }
 
 - (void)setScale:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -486,7 +511,12 @@
 }
 
 - (void)handleOnDraw {
-    [_controller invokeChannelMethod:@"onDraw" arguments:@{}];
+    NSArray *position = [self calculatePosition];
+    [_controller invokeChannelMethod:@"onDraw"
+                           arguments:@{@"pdfXOffset" : [position objectAtIndex:0],
+                                       @"pdfYOffset" :  [position objectAtIndex:1],
+                                       @"pdfScale" : [NSNumber numberWithFloat:_pdfView.scaleFactor]}
+    ];
 }
 
 - (void)PDFViewWillClickOnLink:(PDFView *)sender

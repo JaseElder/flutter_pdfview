@@ -13,7 +13,7 @@ typedef ErrorCallback = void Function(dynamic error);
 typedef PageErrorCallback = void Function(int? page, dynamic error);
 typedef LinkHandlerCallback = void Function(String? uri);
 typedef LoadCompleteCallback = void Function(int? pages);
-typedef DrawCallback = void Function();
+typedef DrawCallback = void Function(double pdfXOffset, double pdfYOffset, double pdfScale);
 
 enum FitPolicy { WIDTH, HEIGHT, BOTH }
 
@@ -387,7 +387,8 @@ class PDFViewController {
         widget.onLoadComplete?.call(call.arguments['pages']);
         return null;
       case 'onDraw':
-        widget.onDraw?.call();
+        widget.onDraw?.call(
+            call.arguments['pdfXOffset'], call.arguments['pdfYOffset'], call.arguments['pdfScale']);
         return null;
     }
     throw MissingPluginException('${call.method} was invoked but has no handler');
