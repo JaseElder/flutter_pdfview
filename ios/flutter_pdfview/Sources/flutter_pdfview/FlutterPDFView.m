@@ -339,11 +339,6 @@
     _currentPage = _pdfView.currentPage;
     _pageCount = [NSNumber numberWithUnsignedLong: _pdfView.document.pageCount];
     _pageNo = (int)[_pdfView.document indexForPage:_currentPage] + 1;
-
-    __weak __typeof__(self) weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [weakSelf handleRenderCompleted:self->_pageCount];
-    });
 }
 
 - (UIView*)view {
@@ -356,6 +351,12 @@
 }
 
 - (void)getCurrentPageSize:(FlutterMethodCall*)call result:(FlutterResult)result {
+    if (_pdfView.currentPage == nil) {
+        result([FlutterError errorWithCode:@"INVALID_STATE"
+                                   message:@"No page loaded"
+                                   details:nil]);
+        return;
+    }
     CGRect bounds = [_pdfView.currentPage boundsForBox:kPDFDisplayBoxMediaBox];
     NSArray *size = @[[NSNumber numberWithFloat:bounds.size.width], [NSNumber numberWithFloat:bounds.size.height]];
     result(size);

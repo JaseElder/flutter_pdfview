@@ -314,7 +314,7 @@ class _PDFViewSettings {
       'defaultPage': defaultPage,
       'fitPolicy': fitPolicy.toString(),
       'preventLinkNavigation': preventLinkNavigation,
-      'backgroundColor': backgroundColor?.toARGB32(),
+      'backgroundColor': backgroundColor?.value,
     };
   }
 
@@ -453,22 +453,25 @@ class PDFViewController {
   }
 
   Future<bool> setZoomLimits(double minZoom, double midZoom, double maxZoom) async {
-    return await _channel.invokeMethod('setZoomLimits', <String, dynamic>{
-      'minZoom': minZoom,
-      'midZoom': midZoom,
-      'maxZoom': maxZoom,
-    });
+    return await _channel.invokeMethod<bool>('setZoomLimits', <String, dynamic>{
+          'minZoom': minZoom,
+          'midZoom': midZoom,
+          'maxZoom': maxZoom,
+        }) ??
+        false;
   }
 
   Future<String> getScreenshot(String fileName) async {
-    final String imageFileName = await _channel.invokeMethod('getScreenshot', <String, dynamic>{
-      'fileName': fileName,
-    });
+    final String imageFileName =
+        await _channel.invokeMethod<String>('getScreenshot', <String, dynamic>{
+              'fileName': fileName,
+            }) ??
+            '';
     return imageFileName;
   }
 
   Future<bool> reload() async {
-    final bool result = await _channel.invokeMethod('reload');
+    final bool result = await _channel.invokeMethod<bool>('reload') ?? false;
     return result;
   }
 

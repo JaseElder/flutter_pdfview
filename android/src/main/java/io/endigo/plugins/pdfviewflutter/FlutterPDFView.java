@@ -32,7 +32,11 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     private final Configurator configurator;
     private final MethodChannel methodChannel;
     private final LinkHandler linkHandler;
+    private final Map<String, Object> onDrawArgs = new HashMap<>();
+    private long _lastDrawTime = 0;
+    private static final long DRAW_THROTTLE_MS = 16; // ~1 frame at 60fps
     public static final String TAG = "FlutterPDFView";
+
 
     FlutterPDFView(Context context, BinaryMessenger messenger, int id, Map<String, Object> params) {
         pdfView = new PDFView(context, null);
@@ -104,11 +108,14 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                         args.put("pages", pages);
                         methodChannel.invokeMethod("onRender", args);
                     }).onDraw((canvas, pageWidth, pageHeight, displayedPage) -> {
-                        Map<String, Object> args = new HashMap<>();
-                        args.put("pdfXOffset", pdfView.getCurrentXOffset());
-                        args.put("pdfYOffset", pdfView.getCurrentYOffset());
-                        args.put("pdfScale", pdfView.getZoom());
-                        methodChannel.invokeMethod("onDraw", args);
+                        long now = System.currentTimeMillis();
+                        if (now - _lastDrawTime < DRAW_THROTTLE_MS) return;
+                        _lastDrawTime = now;
+                        onDrawArgs.clear();
+                        onDrawArgs.put("pdfXOffset", pdfView.getCurrentXOffset());
+                        onDrawArgs.put("pdfYOffset", pdfView.getCurrentYOffset());
+                        onDrawArgs.put("pdfScale", pdfView.getZoom());
+                        methodChannel.invokeMethod("onDraw", onDrawArgs);
                     }).onLoad(nbPages -> {
                         Map<String, Object> args = new HashMap<>();
                         args.put("pages", nbPages);
