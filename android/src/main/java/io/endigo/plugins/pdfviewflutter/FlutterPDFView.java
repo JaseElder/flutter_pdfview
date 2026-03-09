@@ -35,11 +35,13 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     private final Map<String, Object> onDrawArgs = new HashMap<>();
     private long _lastDrawTime = 0;
     private static final long DRAW_THROTTLE_MS = 16; // ~1 frame at 60fps
+    private final float displayDensity;
     public static final String TAG = "FlutterPDFView";
 
 
     FlutterPDFView(Context context, BinaryMessenger messenger, int id, Map<String, Object> params) {
         pdfView = new PDFView(context, null);
+        displayDensity = context.getResources().getDisplayMetrics().density;
         final boolean preventLinkNavigation = getBoolean(params, "preventLinkNavigation");
 
         methodChannel = new MethodChannel(messenger, "plugins.endigo.io/pdfview_" + id);
@@ -112,8 +114,8 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
                         if (now - _lastDrawTime < DRAW_THROTTLE_MS) return;
                         _lastDrawTime = now;
                         onDrawArgs.clear();
-                        onDrawArgs.put("pdfXOffset", pdfView.getCurrentXOffset());
-                        onDrawArgs.put("pdfYOffset", pdfView.getCurrentYOffset());
+                        onDrawArgs.put("pdfXOffset", pdfView.getCurrentXOffset() / displayDensity);
+                        onDrawArgs.put("pdfYOffset", pdfView.getCurrentYOffset() / displayDensity);
                         onDrawArgs.put("pdfScale", pdfView.getZoom());
                         methodChannel.invokeMethod("onDraw", onDrawArgs);
                     }).onLoad(nbPages -> {
@@ -193,8 +195,8 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
     }
 
     void getPosition(Result result) {
-        float xOffset = pdfView.getCurrentXOffset();
-        float yOffset = pdfView.getCurrentYOffset();
+        float xOffset = pdfView.getCurrentXOffset() / displayDensity;
+        float yOffset = pdfView.getCurrentYOffset() / displayDensity;
 
         result.success(new float[]{xOffset, yOffset});
     }
@@ -211,7 +213,6 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         if (xPosObj != null) {
             xOffset = xPosObj; // Safe unboxing
         } else {
-            // Handle null case, e.g., assign a default value
             xOffset = 0.0;
         }
         Double yPosObj = call.argument("yPos");
@@ -219,10 +220,9 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
         if (yPosObj != null) {
             yOffset = yPosObj; // Safe unboxing
         } else {
-            // Handle null case, e.g., assign a default value
             yOffset = 0.0;
         }
-        pdfView.moveTo((float) xOffset, (float) yOffset);
+        pdfView.moveTo((float) xOffset * displayDensity, (float) yOffset * displayDensity);
         pdfView.loadPages();
         result.success(true);
     }
@@ -322,7 +322,6 @@ public class FlutterPDFView implements PlatformView, MethodCallHandler {
             if (pageObj != null) {
                 page = pageObj; // Safe unboxing
             } else {
-                // Handle null case, e.g., assign a default value
                 page = 1;
             }
             pdfView.jumpTo(page);
